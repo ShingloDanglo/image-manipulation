@@ -116,19 +116,19 @@ def edgeDetect():
                     pixelArray[rowIndex, colIndex] = (0,0,0,255)
                
 
-def blur():
+def blur(kernelSize):
     tempArray = np.copy(pixelArray)
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
-            if(rowIndex >= 5 and rowIndex <= len(pixelArray) -5 and colIndex >=5 and colIndex <= len(pixelArray[0]) - 5):
+            if(rowIndex >= kernelSize and rowIndex <= len(pixelArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(pixelArray[0]) - kernelSize):
                 r = []
                 g = []
                 b = []
 
                 # Loop through the 5x5 neighborhood around the current pixel
-                for o in range(-4, 5):
-                    for p in range(-4, 5):
+                for o in range(-kernelSize +1, kernelSize):
+                    for p in range(-kernelSize +1, kernelSize):
                         neighbor_pixel = tempArray[rowIndex + o, colIndex + p]
                         r.append(neighbor_pixel[0])
                         g.append(neighbor_pixel[1])
@@ -228,7 +228,7 @@ def saveImage(filename="random_noise.png"):
 loadImage("motorbike.png")
 #loadImage("images.jpg")
 #modifyImage()
-blur()
+#blur(2)
 posterize()
 saveModifiedImage()
 #saveImage()
