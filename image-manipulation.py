@@ -1,8 +1,11 @@
 import os
+import sys
 from PIL import Image
 import random
 import time
 import numpy as np
+
+loadedImage = sys.argv[1]
 
 width = 64
 height = 128
@@ -126,7 +129,7 @@ def blur(kernelSize):
                 g = []
                 b = []
 
-                # Loop through the 5x5 neighborhood around the current pixel
+                # Loop through neighboring pixels
                 for o in range(-kernelSize +1, kernelSize):
                     for p in range(-kernelSize +1, kernelSize):
                         neighbor_pixel = tempArray[rowIndex + o, colIndex + p]
@@ -143,8 +146,9 @@ def blur(kernelSize):
                 #pixelArray[rowIndex, colIndex] = (r,g,b,255)
 
 
-def posterize():
+def posterize(numberOfShades):
     tempArray = np.copy(pixelArray)
+    
     totalR = []
     totalG = []
     totalB = []
@@ -152,6 +156,10 @@ def posterize():
     r = 0
     g = 0
     b = 0
+
+    lowestBlackWhite = 255
+    highestBlackWhite = 0
+
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
@@ -164,29 +172,69 @@ def posterize():
             totalG.append(g)
             totalB.append(b)
 
+            blackWhite = int((0.299*r)+(0.857*g)+(0.114*b))
+            if(blackWhite > highestBlackWhite):
+                highestBlackWhite = np.clip(blackWhite, 0, 255)
+            elif(blackWhite < lowestBlackWhite):
+                lowestBlackWhite = np.clip(blackWhite, 0, 255)
+
+
     meanR = int(np.mean(totalR))
     meanG = int(np.mean(totalG))
     meanB = int(np.mean(totalB))
 
+
     meanBlackWhite = int((0.299*meanR)+(0.857*meanG)+(0.114*meanB))
+
+    #lowestBlackWhite = 10
+    
+    blackWhiteRange = highestBlackWhite - lowestBlackWhite
+    shadeSize = int(blackWhiteRange/numberOfShades)
+    shades = []
+    shadeMultipliers = []
+
+    #Calculate shade values
+    for shade in range(numberOfShades + 1):
+        shades.append(blackWhiteRange)
+        blackWhiteRange -= shadeSize
+
+    #Calculate shade multiplers
+    for shade in shades:
+        #scale = 1-(count/numberOfShades)
+        #multiplier = highestBlackWhite * scale + lowestBlackWhite * (1-scale)
+        #shadeMultipliers.append(multiplier/meanBlackWhite)
+        shadeMultipliers.append(meanBlackWhite/np.clip(shade, 1, 255))
+    
+    print("Shade multipliers: ", shadeMultipliers)
+
+
+    print("Shadesize: ",shadeSize)
+    print("Highest: ",highestBlackWhite)
+    print("Lowest",lowestBlackWhite)
+    print("Average:",meanBlackWhite)
+    print(shades)
+
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
             r = tempArray[rowIndex, colIndex][0]
             g = tempArray[rowIndex, colIndex][1]
             b = tempArray[rowIndex, colIndex][2]
-            
             combinedRGB = int((0.299*r)+(0.857*g)+(0.114*b))
-            if(combinedRGB >= meanBlackWhite * 2):
-                pixelArray[rowIndex, colIndex] = (np.clip(int(meanR*5), 0, 255) ,np.clip(int(meanG*5), 0, 255),np.clip(int(meanB*5), 0, 255),255)
-            elif(combinedRGB >= meanBlackWhite * 1.5):
-                pixelArray[rowIndex, colIndex] = (np.clip(int(meanR*3), 0, 255) ,np.clip(int(meanG*3), 0, 255),np.clip(int(meanB*3), 0, 255),255)
-            elif(combinedRGB >= meanBlackWhite):
-                pixelArray[rowIndex, colIndex] = (np.clip(int(meanR*1.5), 0, 255) ,np.clip(int(meanG*1.5), 0, 255),np.clip(int(meanB*1.5), 0, 255),255)
-            elif(combinedRGB >= meanBlackWhite * 0.7):
-                pixelArray[rowIndex, colIndex] = (np.clip(int(meanR*0.8), 0, 255) ,np.clip(int(meanG*0.8), 0, 255),np.clip(int(meanB*0.8), 0, 255),255)
-            else:
-                pixelArray[rowIndex, colIndex] = (np.clip(int(meanR*0.5), 0, 255) ,np.clip(int(meanG*0.5), 0, 255),np.clip(int(meanB*0.5), 0, 255),255)
+
+            #print("Start of shade shit")
+            #print("Shade index")
+            for shadeIndex, shade in enumerate(shades):
+                joe = numberOfShades - shadeIndex + 1
+                #print(joe)
+                if(combinedRGB >= shade):
+                    r = np.clip(int(meanR/shadeMultipliers[shadeIndex]),0,255)
+                    g = np.clip(int(meanG/shadeMultipliers[shadeIndex]),0,255)
+                    b = np.clip(int(meanB/shadeMultipliers[shadeIndex]),0,255)
+                    pixelArray[rowIndex, colIndex] = (r, g, b, 255)
+                    break
+
+            
                 #pixelArray[rowIndex, colIndex] = (int(combinedRGB*0.7), int(combinedRGB*0.9), int(combinedRGB*1.1), 255)         
 
             #pixelArray[rowIndex, colIndex] = (combinedRGB, combinedRGB, combinedRGB, 255)         
@@ -225,10 +273,10 @@ def saveImage(filename="random_noise.png"):
     print(f"Image saved as {filename}")
 
 
-loadImage("motorbike.png")
+loadImage(loadedImage)
 #loadImage("images.jpg")
 #modifyImage()
 #blur(2)
-posterize()
+posterize(5)
 saveModifiedImage()
 #saveImage()
