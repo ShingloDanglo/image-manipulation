@@ -186,7 +186,10 @@ def posterize(numberOfShades):
 
     meanBlackWhite = int((0.299*meanR)+(0.857*meanG)+(0.114*meanB))
 
-    #lowestBlackWhite = 10
+    #meanR = meanBlackWhite
+    #meanG = meanBlackWhite
+    #meanB = meanBlackWhite
+
     
     blackWhiteRange = highestBlackWhite - lowestBlackWhite
     shadeSize = int(blackWhiteRange/numberOfShades)
@@ -239,6 +242,103 @@ def posterize(numberOfShades):
 
             #pixelArray[rowIndex, colIndex] = (combinedRGB, combinedRGB, combinedRGB, 255)         
 
+
+
+
+
+
+
+
+
+
+
+
+def posterize2(numOfColors):
+    stepSize = round(256/(numOfColors-1))
+    tempArray = np.copy(pixelArray)
+    print(stepSize)
+    r = 0
+    g = 0
+    b = 0
+
+    for rowIndex, pixelColumn in enumerate(pixelArray):
+        for colIndex, pixel in enumerate(pixelColumn):
+
+
+            r = tempArray[rowIndex, colIndex][0]
+            g = tempArray[rowIndex, colIndex][1]
+            b = tempArray[rowIndex, colIndex][2]
+            #print("Before: ",r,", ",g,", ",b)
+
+            r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
+            g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
+            b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
+            #print("After: ",r,", ",g,", ",b)
+
+            pixelArray[rowIndex, colIndex] = (r, g, b, 255)    
+
+#Ordered dithering
+def posterizeDither(numOfColors):
+    stepSize = round(256/(numOfColors-1))
+    tempArray = np.copy(pixelArray)
+    print(stepSize)
+
+    rule = np.array([[0.0, 0.5], [0.75, 0.25]])
+
+    r = 0
+    g = 0
+    b = 0
+
+    print("stepSize*0.25: ",stepSize*0.25)
+    print("stepSize*0.5: ",stepSize*0.5)
+    print("stepSize*0.75: ",stepSize*0.75)
+
+    for rowIndex, pixelColumn in enumerate(pixelArray):
+        for colIndex, pixel in enumerate(pixelColumn):
+
+
+
+            r = tempArray[rowIndex, colIndex][0]
+            g = tempArray[rowIndex, colIndex][1]
+            b = tempArray[rowIndex, colIndex][2]
+            #print("Before: ",r,", ",g,", ",b)
+
+            #r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
+            #g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
+            #b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
+            #print("After: ",r,", ",g,", ",b)
+            
+            newR = 255
+            newG = 255
+            newB = 255
+            
+            newR = dither(r, rowIndex, colIndex, stepSize)
+            newG = dither(g, rowIndex, colIndex, stepSize)
+            newB = dither(b, rowIndex, colIndex, stepSize)
+
+            pixelArray[rowIndex, colIndex] = (newR, newG, newB, 255)   
+
+def dither(color, rowIndex, colIndex, stepSize):
+    newColor = 0
+    if(rowIndex % 2 == 0):
+        if(colIndex % 2 == 0):
+            if( color > (round(stepSize*0.25))):
+                newColor = 255
+        else:
+            if(color > (round(stepSize*0.75))):
+                newColor = 255
+    else:
+        if(colIndex % 2 == 0):
+            if(color > (round(stepSize*0.5))):
+                newColor = 255
+
+               
+        else:
+            if(color > (round(stepSize*0.25))):
+                newColor = 255
+    return newColor
+    
+
 def saveModifiedImage():
     img = Image.fromarray(pixelArray, 'RGBA')
     # Save the image
@@ -277,6 +377,8 @@ loadImage(loadedImage)
 #loadImage("images.jpg")
 #modifyImage()
 #blur(2)
-posterize(5)
+#posterize(5)
+#posterize2(2)
+posterizeDither(2)
 saveModifiedImage()
 #saveImage()
