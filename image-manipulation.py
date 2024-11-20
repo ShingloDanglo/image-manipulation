@@ -301,42 +301,27 @@ def posterizeDither(numOfColors):
             r = tempArray[rowIndex, colIndex][0]
             g = tempArray[rowIndex, colIndex][1]
             b = tempArray[rowIndex, colIndex][2]
-            #print("Before: ",r,", ",g,", ",b)
 
-            #r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
-            #g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
-            #b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
-            #print("After: ",r,", ",g,", ",b)
+            ditherThreshold = rule[rowIndex % 2, colIndex % 2] * stepSize
             
             newR = 255
             newG = 255
             newB = 255
             
-            newR = dither(r, rowIndex, colIndex, stepSize)
-            newG = dither(g, rowIndex, colIndex, stepSize)
-            newB = dither(b, rowIndex, colIndex, stepSize)
-
+            newR = np.clip(dither(r, stepSize, ditherThreshold), 0, 255)
+            newG = np.clip(dither(g, stepSize, ditherThreshold), 0, 255)
+            newB = np.clip(dither(b, stepSize, ditherThreshold), 0, 255)
             pixelArray[rowIndex, colIndex] = (newR, newG, newB, 255)   
-
-def dither(color, rowIndex, colIndex, stepSize):
-    newColor = 0
-    if(rowIndex % 2 == 0):
-        if(colIndex % 2 == 0):
-            if( color > (round(stepSize*0.25))):
-                newColor = 255
-        else:
-            if(color > (round(stepSize*0.75))):
-                newColor = 255
-    else:
-        if(colIndex % 2 == 0):
-            if(color > (round(stepSize*0.5))):
-                newColor = 255
-
-               
-        else:
-            if(color > (round(stepSize*0.25))):
-                newColor = 255
-    return newColor
+            
+def dither(color,stepSize, ditherThreshold):
+    quantizedColor = round(color // stepSize) * stepSize
+    #print("color percent stepSize: ", color % stepSize, "ditherThreshold: ", ditherThreshold)
+    if (color % stepSize) > ditherThreshold and (color % stepSize) > stepSize*0.25:
+        quantizedColor = min(quantizedColor + stepSize, 255)
+        #print("Dithered")
+    #else:
+        #print("Did not dither")
+    return quantizedColor
     
 
 def saveModifiedImage():
@@ -378,7 +363,7 @@ loadImage(loadedImage)
 #modifyImage()
 #blur(2)
 #posterize(5)
-posterize2(5)
-#posterizeDither(2)
+#posterize2(5)
+posterizeDither(4)
 saveModifiedImage()
 #saveImage()
