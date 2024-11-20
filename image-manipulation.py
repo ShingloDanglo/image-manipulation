@@ -283,15 +283,12 @@ def posterizeDither(numOfColors):
     tempArray = np.copy(pixelArray)
     print(stepSize)
 
-    rule = np.array([[0.0, 0.5], [0.75, 0.25]])
+    rule = np.array([[0.2, 0.6], [0.8, 0.4]])
 
     r = 0
     g = 0
     b = 0
 
-    print("stepSize*0.25: ",stepSize*0.25)
-    print("stepSize*0.5: ",stepSize*0.5)
-    print("stepSize*0.75: ",stepSize*0.75)
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
@@ -316,11 +313,8 @@ def posterizeDither(numOfColors):
 def dither(color,stepSize, ditherThreshold):
     quantizedColor = round(color // stepSize) * stepSize
     #print("color percent stepSize: ", color % stepSize, "ditherThreshold: ", ditherThreshold)
-    if (color % stepSize) > ditherThreshold and (color % stepSize) > stepSize*0.25:
+    if (color % stepSize) > ditherThreshold:
         quantizedColor = min(quantizedColor + stepSize, 255)
-        #print("Dithered")
-    #else:
-        #print("Did not dither")
     return quantizedColor
     
 
@@ -364,6 +358,6 @@ loadImage(loadedImage)
 #blur(2)
 #posterize(5)
 #posterize2(5)
-posterizeDither(4)
+posterizeDither(2)
 saveModifiedImage()
 #saveImage()
