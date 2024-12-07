@@ -1,11 +1,20 @@
 import os
 import sys
+import psutil
 from PIL import Image
 import random
 import time
 import numpy as np
+from numba import njit, prange
+from moviepy import VideoFileClip
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
-loadedImage = sys.argv[1]
+p = psutil.Process()
+
+inputType = sys.argv[1]
+loadedImage = sys.argv[2]
+outputPath = sys.argv[3]
+desiredProcess = sys.argv[4]
 
 width = 64
 height = 128
@@ -21,102 +30,6 @@ def loadImage(imagePath):
     image = Image.open(imagePath)
     pixelArray = np.array(image)
 
-def modifyImage():
-    print(pixelArray[0])
- 
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-            #print("Pixel: ",pixelArray[rowIndex, colIndex][3])
-            r = pixelArray[rowIndex, colIndex][0]
-            g = pixelArray[rowIndex, colIndex][1]
-            b = pixelArray[rowIndex, colIndex][2]
-            
-            #if(g > r*1 and g > b*1):
-                #pixelArray[rowIndex, colIndex] = (r*2, g/2, b, 255)
-
-            pixelArray[rowIndex, colIndex][0] = randomInt
-            pixelArray[rowIndex, colIndex][1] = g
-            pixelArray[rowIndex, colIndex][2] = b
-            
-            #pixelArray[rowIndex, colIndex] = (128,128,128, 255)
-            #pixelArray[rowIndex, colIndex][0] = 255
-    #pixelArray[0:100, 0:100, 0] = 0
-    
-def edgeDetect():
-    tempArray = np.copy(pixelArray)
-
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-            pixelArray[rowIndex, colIndex] = (200,200,200,255)
-            #print("Pixel: ",pixelArray[rowIndex, colIndex][3])
-            #thisPixel = [rowIndex, colIndex]
-
-            
-            
-            if(rowIndex >= 3 and rowIndex <= len(pixelArray) -3 and colIndex >=3 and colIndex <= len(pixelArray[0]) - 3):
-                #pixelArray[rowIndex, colIndex] = (combinedRGB, combinedRGB, combinedRGB, 255)
-
-                r = tempArray[rowIndex, colIndex][0]
-                g = tempArray[rowIndex, colIndex][1]
-                b = tempArray[rowIndex, colIndex][2]
-                combinedRGB = (r + b + g)/3
-                
-                r = tempArray[rowIndex-1 , colIndex][0]
-                g = tempArray[rowIndex-1, colIndex][1]
-                b = tempArray[rowIndex-1, colIndex][2]
-                
-                neighorCombinedRGB1 = (r + b + g)/3
-
-                r = tempArray[rowIndex-2 , colIndex][0]
-                g = tempArray[rowIndex-2, colIndex][1]
-                b = tempArray[rowIndex-2, colIndex][2]
-                
-                neighorCombinedRGB2 = (r + b + g)/3
-
-                r = tempArray[rowIndex+1 , colIndex][0]
-                g = tempArray[rowIndex+1, colIndex][1]
-                b = tempArray[rowIndex+1, colIndex][2]
-                
-                neighorCombinedRGB3 = (r + b + g)/3
-
-                r = tempArray[rowIndex+2 , colIndex][0]
-                g = tempArray[rowIndex+2, colIndex][1]
-                b = tempArray[rowIndex+2, colIndex][2]
-                
-                neighorCombinedRGB4 = (r + b + g)/3
-
-
-
-                r = tempArray[rowIndex , colIndex-1][0]
-                g = tempArray[rowIndex, colIndex-1][1]
-                b = tempArray[rowIndex, colIndex-1][2]
-                
-                neighorCombinedRGB5 = (r + b + g)/3
-
-                r = tempArray[rowIndex , colIndex-2][0]
-                g = tempArray[rowIndex, colIndex-2][1]
-                b = tempArray[rowIndex, colIndex-2][2]
-                
-                neighorCombinedRGB6 = (r + b + g)/3
-
-                r = tempArray[rowIndex , colIndex+1][0]
-                g = tempArray[rowIndex, colIndex+1][1]
-                b = tempArray[rowIndex, colIndex+1][2]
-                
-                neighorCombinedRGB7 = (r + b + g)/3
-
-                r = tempArray[rowIndex , colIndex+2][0]
-                g = tempArray[rowIndex, colIndex+2][1]
-                b = tempArray[rowIndex, colIndex+2][2]
-                
-                neighorCombinedRGB8 = (r + b + g)/3
-
-                neighorCombinedRGB = (neighorCombinedRGB4+neighorCombinedRGB4+neighorCombinedRGB4+neighorCombinedRGB4+neighorCombinedRGB5+neighorCombinedRGB6+neighorCombinedRGB7+neighorCombinedRGB8)/8
-                
-
-
-                if(combinedRGB > neighorCombinedRGB + 30):
-                    pixelArray[rowIndex, colIndex] = (0,0,0,255)
                
 
 def blur(kernelSize):
@@ -146,120 +59,13 @@ def blur(kernelSize):
                 #pixelArray[rowIndex, colIndex] = (r,g,b,255)
 
 
-def posterize(numberOfShades):
-    tempArray = np.copy(pixelArray)
-    
-    totalR = []
-    totalG = []
-    totalB = []
-
-    r = 0
-    g = 0
-    b = 0
-
-    lowestBlackWhite = 255
-    highestBlackWhite = 0
 
 
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-
-            r = tempArray[rowIndex, colIndex][0]
-            g = tempArray[rowIndex, colIndex][1]
-            b = tempArray[rowIndex, colIndex][2]
-
-            totalR.append(r)
-            totalG.append(g)
-            totalB.append(b)
-
-            blackWhite = int((0.299*r)+(0.857*g)+(0.114*b))
-            if(blackWhite > highestBlackWhite):
-                highestBlackWhite = np.clip(blackWhite, 0, 255)
-            elif(blackWhite < lowestBlackWhite):
-                lowestBlackWhite = np.clip(blackWhite, 0, 255)
-
-
-    meanR = int(np.mean(totalR))
-    meanG = int(np.mean(totalG))
-    meanB = int(np.mean(totalB))
-
-
-    meanBlackWhite = int((0.299*meanR)+(0.857*meanG)+(0.114*meanB))
-
-    #meanR = meanBlackWhite
-    #meanG = meanBlackWhite
-    #meanB = meanBlackWhite
-
-    
-    blackWhiteRange = highestBlackWhite - lowestBlackWhite
-    shadeSize = int(blackWhiteRange/numberOfShades)
-    shades = []
-    shadeMultipliers = []
-
-    #Calculate shade values
-    for shade in range(numberOfShades + 1):
-        shades.append(blackWhiteRange)
-        blackWhiteRange -= shadeSize
-
-    #Calculate shade multiplers
-    for shade in shades:
-        #scale = 1-(count/numberOfShades)
-        #multiplier = highestBlackWhite * scale + lowestBlackWhite * (1-scale)
-        #shadeMultipliers.append(multiplier/meanBlackWhite)
-        shadeMultipliers.append(meanBlackWhite/np.clip(shade, 1, 255))
-    
-    print("Shade multipliers: ", shadeMultipliers)
-
-
-    print("Shadesize: ",shadeSize)
-    print("Highest: ",highestBlackWhite)
-    print("Lowest",lowestBlackWhite)
-    print("Average:",meanBlackWhite)
-    print(shades)
-
-
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-            r = tempArray[rowIndex, colIndex][0]
-            g = tempArray[rowIndex, colIndex][1]
-            b = tempArray[rowIndex, colIndex][2]
-            combinedRGB = int((0.299*r)+(0.857*g)+(0.114*b))
-
-            #print("Start of shade shit")
-            #print("Shade index")
-            for shadeIndex, shade in enumerate(shades):
-                joe = numberOfShades - shadeIndex + 1
-                #print(joe)
-                if(combinedRGB >= shade):
-                    r = np.clip(int(meanR/shadeMultipliers[shadeIndex]),0,255)
-                    g = np.clip(int(meanG/shadeMultipliers[shadeIndex]),0,255)
-                    b = np.clip(int(meanB/shadeMultipliers[shadeIndex]),0,255)
-                    pixelArray[rowIndex, colIndex] = (r, g, b, 255)
-                    break
-
-            
-                #pixelArray[rowIndex, colIndex] = (int(combinedRGB*0.7), int(combinedRGB*0.9), int(combinedRGB*1.1), 255)         
-
-            #pixelArray[rowIndex, colIndex] = (combinedRGB, combinedRGB, combinedRGB, 255)         
-
-
-
-
-
-
-
-
-
-
-
-
-def posterize2(numOfColors):
+#Greatly simplified posterization algorithm
+def posterize(numOfColors):
     stepSize = round(256/(numOfColors-1))
     tempArray = np.copy(pixelArray)
     print(stepSize)
-    r = 0
-    g = 0
-    b = 0
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
@@ -270,24 +76,66 @@ def posterize2(numOfColors):
             b = tempArray[rowIndex, colIndex][2]
             #print("Before: ",r,", ",g,", ",b)
 
-            r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
-            g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
+            #r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
+            #g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
             b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
             #print("After: ",r,", ",g,", ",b)
 
-            pixelArray[rowIndex, colIndex] = (r, g, b, 255)    
+            pixelArray[rowIndex, colIndex] = (b, b, b, 255)    
+
+
+def ditherVideo(videoPath):
+    imageArray = []
+    frameDirectory = "frames/"
+    clip = VideoFileClip(videoPath)
+    for i, frame in enumerate(clip.iter_frames(fps=clip.fps, dtype='uint8')):
+        framePath = f"{frameDirectory}frame_{i:04d}.png"
+        global pixelArray
+        pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
+        posterizeDither(2)
+        imageArray.append(pixelArray)
+
+    clip = ImageSequenceClip(imageArray, fps=clip.fps)
+    clip.write_videofile(outputPath, codec="libx264")
+    print(f"Video saved to {outputPath}")
+    
+
+
 
 #Ordered dithering
+#@njit(parallel=True)
 def posterizeDither(numOfColors):
     stepSize = round(256/(numOfColors-1))
     tempArray = np.copy(pixelArray)
-    print(stepSize)
+    rule = []
 
-    rule = np.array([[0.2, 0.6], [0.8, 0.4]])
+    matrixSize = 2
+    
+    if(matrixSize == 2):
+        rule = stepSize * (1.0 / 4.0) * np.array([
+            [1, 3],
+            [3.5, 2]
+        ])
 
-    r = 0
-    g = 0
-    b = 0
+    if(matrixSize == 4):
+        rule = stepSize * (1.0 / 16.0) * np.array([
+            [1, 9, 3, 11],
+            [13, 5, 15, 7],
+            [4, 12, 2, 10],
+            [16, 8, 14, 6]
+        ])
+
+    if(matrixSize == 8):
+        rule = stepSize * (1.0 / 64.0) * np.array([
+            [1, 49, 13, 61, 4, 52, 16, 63],
+            [33, 17, 45, 29, 36, 20, 48, 32],
+            [9, 57, 5, 53, 12, 60, 8, 56],
+            [41, 25, 37, 21, 44, 28, 40, 24],
+            [3, 51, 15, 63, 2, 50, 14, 62],
+            [35, 19, 47, 31, 34, 18, 46, 30],
+            [11, 59, 7, 55, 10, 58, 6, 54],
+            [43, 27, 39, 23, 42, 26, 38, 22]
+        ])
 
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
@@ -298,31 +146,47 @@ def posterizeDither(numOfColors):
             r = tempArray[rowIndex, colIndex][0]
             g = tempArray[rowIndex, colIndex][1]
             b = tempArray[rowIndex, colIndex][2]
+            a = tempArray[rowIndex, colIndex][3]
 
-            ditherThreshold = rule[rowIndex % 2, colIndex % 2] * stepSize
+            ditherThreshold = rule[rowIndex % matrixSize, colIndex % matrixSize]-1
+            #print("DIther threshold: ",ditherThreshold)
             
-            newR = 255
-            newG = 255
-            newB = 255
-            
-            newR = np.clip(dither(r, stepSize, ditherThreshold), 0, 255)
-            newG = np.clip(dither(g, stepSize, ditherThreshold), 0, 255)
-            newB = np.clip(dither(b, stepSize, ditherThreshold), 0, 255)
-            pixelArray[rowIndex, colIndex] = (newR, newG, newB, 255)   
-            
+            newR = clip(dither(r, stepSize, ditherThreshold), 0, 255)
+            newG = clip(dither(g, stepSize, ditherThreshold), 0, 255)
+            newB = clip(dither(b, stepSize, ditherThreshold), 0, 255)
+            newA = clip(dither(a, stepSize, ditherThreshold), 0, 255)
+            pixelArray[rowIndex, colIndex] = (newR, newG, newB, newA)   
+    print("Dither applied")
+
+@njit
 def dither(color,stepSize, ditherThreshold):
-    quantizedColor = round(color // stepSize) * stepSize
-    #print("color percent stepSize: ", color % stepSize, "ditherThreshold: ", ditherThreshold)
-    if (color % stepSize) > ditherThreshold:
-        quantizedColor = min(quantizedColor + stepSize, 255)
+    #quantizedColor = round(round(color/ stepSize) * stepSize)
+    quantizedColor = 0
+    #print("quantizedCOlor: ",quantizedColor)
+    #print("Color",color)
+    if(color % stepSize) >= ditherThreshold:
+        quantizedColor = clip(quantizedColor + stepSize, 0, 255)
+        #quantizedColor = 255
+        #print("True")
+    else:
+        pass
     return quantizedColor
-    
 
-def saveModifiedImage():
+@njit
+def clip(value, min_val, max_val):
+    if value < min_val:
+        return min_val
+    elif value > max_val:
+        return max_val
+    return value
+
+
+def saveImage(imageName):
     img = Image.fromarray(pixelArray, 'RGBA')
+    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
     # Save the image
-    img.save("new-image.png")
-    print(f"Image saved as new-image.png")
+    img.save(imageName, optimize=True)
+    print(f"Image saved as ",imageName)
 
 
 
@@ -342,22 +206,32 @@ def generateRandomNoise():
 
         matrix.append(a)
 
-def saveImage(filename="random_noise.png"):
-    # Convert the matrix to a NumPy array
-    np_array = np.array(matrix, dtype=np.uint8)
-    # Create an image from the array
-    img = Image.fromarray(np_array, 'RGB')
-    # Save the image
-    img.save(filename)
-    print(f"Image saved as {filename}")
 
+if inputType == "image":
+    loadImage(loadedImage)
+    if desiredProcess == "dither":
+        posterizeDither(2)
+        saveImage(outputPath)
+    elif desiredProcess == "posterize":
+        posterize(8)
+        saveImage(outputPath)
+    else:
+        print("Please enter either 'dither' or 'posterize'")
+elif inputType == "video":
+    if desiredProcess == "dither":
+        ditherVideo(loadedImage)
+    else:
+        print("Only video dithering is currently supported")
 
-loadImage(loadedImage)
+print("Peak memory usage: ",(p.memory_info().peak_wset/1000)/1000,"MB")
+
 #loadImage("images.jpg")
 #modifyImage()
-#blur(2)
+#blur(4)
 #posterize(5)
-#posterize2(5)
-posterizeDither(2)
-saveModifiedImage()
+#posterize2(2)
+#ditherVideo("videos/blizzard-small.mp4")
+#assemble_video_from_frames("frames/", "videos/output.mp4", fps=24)
+#posterizeDither(2)
+#saveModifiedImage("new-image.png")
 #saveImage()
