@@ -76,12 +76,12 @@ def posterize(numOfColors):
             b = tempArray[rowIndex, colIndex][2]
             #print("Before: ",r,", ",g,", ",b)
 
-            #r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
-            #g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
+            r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
+            g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
             b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
             #print("After: ",r,", ",g,", ",b)
 
-            pixelArray[rowIndex, colIndex] = (b, b, b, 255)    
+            pixelArray[rowIndex, colIndex] = (r, g, b, 255)    
 
 
 def ditherVideo(videoPath):
@@ -92,7 +92,7 @@ def ditherVideo(videoPath):
         framePath = f"{frameDirectory}frame_{i:04d}.png"
         global pixelArray
         pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
-        posterizeDither(2)
+        pixelArray = posterizeDither(2, pixelArray)
         imageArray.append(pixelArray)
 
     clip = ImageSequenceClip(imageArray, fps=clip.fps)
@@ -103,45 +103,43 @@ def ditherVideo(videoPath):
 
 
 #Ordered dithering
-#@njit(parallel=True)
-def posterizeDither(numOfColors):
+@njit(parallel=True)
+def posterizeDither(numOfColors, thisArray):
     stepSize = round(256/(numOfColors-1))
-    tempArray = np.copy(pixelArray)
-    rule = []
+    tempArray = np.copy(thisArray)
 
-    matrixSize = 2
-    
+
+    matrixSize = 8
+    #2x2 matrix
     if(matrixSize == 2):
-        rule = stepSize * (1.0 / 4.0) * np.array([
+        rule = stepSize * (1.0 / 4.0) * (np.array([
             [1, 3],
-            [3.5, 2]
-        ])
-
-    if(matrixSize == 4):
-        rule = stepSize * (1.0 / 16.0) * np.array([
+            [4, 2]
+        ]) - 0.5)
+    #4x4 matrix
+    elif(matrixSize == 4):
+        rule = stepSize * (1.0 / 16.0) * (np.array([
             [1, 9, 3, 11],
             [13, 5, 15, 7],
             [4, 12, 2, 10],
             [16, 8, 14, 6]
-        ])
-
-    if(matrixSize == 8):
-        rule = stepSize * (1.0 / 64.0) * np.array([
-            [1, 49, 13, 61, 4, 52, 16, 63],
-            [33, 17, 45, 29, 36, 20, 48, 32],
-            [9, 57, 5, 53, 12, 60, 8, 56],
-            [41, 25, 37, 21, 44, 28, 40, 24],
-            [3, 51, 15, 63, 2, 50, 14, 62],
-            [35, 19, 47, 31, 34, 18, 46, 30],
-            [11, 59, 7, 55, 10, 58, 6, 54],
-            [43, 27, 39, 23, 42, 26, 38, 22]
-        ])
+        ]) - 0.5)
+    #8x8 matrix
+    else:
+        rule = stepSize * (1.0 / 64.0) * (np.array([
+            [1, 37, 9, 45, 3, 39, 11, 47],
+            [49, 17, 57, 25, 51, 19, 59, 27],
+            [13, 41, 5, 33, 15, 43, 7, 35],
+            [61, 29, 53, 21, 63, 31, 55, 23],
+            [4, 40, 12, 48, 2, 38, 10, 46],
+            [52, 20, 60, 28, 50, 18, 58, 26],
+            [16, 44, 8, 36, 14, 42, 6, 34],
+            [64, 32, 56, 24, 62, 30, 54, 22]
+        ]) - 0.5)
 
 
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
-
-
 
             r = tempArray[rowIndex, colIndex][0]
             g = tempArray[rowIndex, colIndex][1]
@@ -155,8 +153,9 @@ def posterizeDither(numOfColors):
             newG = clip(dither(g, stepSize, ditherThreshold), 0, 255)
             newB = clip(dither(b, stepSize, ditherThreshold), 0, 255)
             newA = clip(dither(a, stepSize, ditherThreshold), 0, 255)
-            pixelArray[rowIndex, colIndex] = (newR, newG, newB, newA)   
+            thisArray[rowIndex, colIndex] = (newR, newG, newB, newA)   
     print("Dither applied")
+    return thisArray
 
 @njit
 def dither(color,stepSize, ditherThreshold):
@@ -210,7 +209,7 @@ def generateRandomNoise():
 if inputType == "image":
     loadImage(loadedImage)
     if desiredProcess == "dither":
-        posterizeDither(2)
+        pixelArray = posterizeDither(2, pixelArray)
         saveImage(outputPath)
     elif desiredProcess == "posterize":
         posterize(8)
