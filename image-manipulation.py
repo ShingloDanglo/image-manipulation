@@ -11,33 +11,19 @@ from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
 p = psutil.Process()
 
-inputType = sys.argv[1]
-loadedImage = sys.argv[2]
-outputPath = sys.argv[3]
-desiredProcess = sys.argv[4]
-
-width = 64
-height = 128
-
-pixel1 = (255,255,255)
-pixel2 = (128,128,128)
-pixel3 = (0,0,0)
-randomInt = random.randint(0,255)
-matrix=[]
-
 def loadImage(imagePath):
     global pixelArray
     image = Image.open(imagePath)
     pixelArray = np.array(image)
 
                
+@njit
+def blur(kernelSize, inputArray):
+    outputArray = np.copy(inputArray)
 
-def blur(kernelSize):
-    tempArray = np.copy(pixelArray)
-
-    for rowIndex, pixelColumn in enumerate(pixelArray):
+    for rowIndex, pixelColumn in enumerate(inputArray):
         for colIndex, pixel in enumerate(pixelColumn):
-            if(rowIndex >= kernelSize and rowIndex <= len(pixelArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(pixelArray[0]) - kernelSize):
+            if(rowIndex >= kernelSize and rowIndex <= len(inputArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(inputArray[0]) - kernelSize):
                 r = []
                 g = []
                 b = []
@@ -45,20 +31,18 @@ def blur(kernelSize):
                 # Loop through neighboring pixels
                 for o in range(-kernelSize +1, kernelSize):
                     for p in range(-kernelSize +1, kernelSize):
-                        neighbor_pixel = tempArray[rowIndex + o, colIndex + p]
+                        neighbor_pixel = outputArray[rowIndex + o, colIndex + p]
                         r.append(neighbor_pixel[0])
                         g.append(neighbor_pixel[1])
                         b.append(neighbor_pixel[2])
 
-                # Calculate the mean RGB values of the 5x5 neighborhood
-                mean_r = int(np.mean(r))
-                mean_g = int(np.mean(g))
-                mean_b = int(np.mean(b))
+                # Calculate the mean RGB values current pixel and its neighbours
+                meanR = int(np.mean(np.asarray(r)))
+                meanG = int(np.mean(np.asarray(g)))
+                meanB = int(np.mean(np.asarray(b)))
 
-                pixelArray[rowIndex, colIndex] = (mean_r, mean_g, mean_b, 255)
-                #pixelArray[rowIndex, colIndex] = (r,g,b,255)
-
-
+                outputArray[rowIndex, colIndex] = (meanR, meanG, meanB, 255)
+    return outputArray
 
 
 #Greatly simplified posterization algorithm
@@ -104,9 +88,9 @@ def ditherVideo(videoPath):
 
 #Ordered dithering
 @njit(parallel=True)
-def posterizeDither(numOfColors, thisArray):
+def posterizeDither(numOfColors, inputPixels):
     stepSize = round(256/(numOfColors-1))
-    tempArray = np.copy(thisArray)
+    outputPixels = np.copy(inputPixels)
 
 
     matrixSize = 8
@@ -141,21 +125,23 @@ def posterizeDither(numOfColors, thisArray):
     for rowIndex, pixelColumn in enumerate(pixelArray):
         for colIndex, pixel in enumerate(pixelColumn):
 
-            r = tempArray[rowIndex, colIndex][0]
-            g = tempArray[rowIndex, colIndex][1]
-            b = tempArray[rowIndex, colIndex][2]
-            a = tempArray[rowIndex, colIndex][3]
+            r = inputPixels[rowIndex, colIndex][0]
+            g = inputPixels[rowIndex, colIndex][1]
+            b = inputPixels[rowIndex, colIndex][2]
+            a = inputPixels[rowIndex, colIndex][3]
 
             ditherThreshold = rule[rowIndex % matrixSize, colIndex % matrixSize]-1
+            #ditherThreshold = (stepSize * (1.0 / 64.0) * (random.randint(1, 64) -0.5)) - 1
             #print("DIther threshold: ",ditherThreshold)
             
             newR = clip(dither(r, stepSize, ditherThreshold), 0, 255)
             newG = clip(dither(g, stepSize, ditherThreshold), 0, 255)
             newB = clip(dither(b, stepSize, ditherThreshold), 0, 255)
             newA = clip(dither(a, stepSize, ditherThreshold), 0, 255)
-            thisArray[rowIndex, colIndex] = (newR, newG, newB, newA)   
+            outputPixels[rowIndex, colIndex] = (newR, newG, newB, newA)   
     print("Dither applied")
-    return thisArray
+    return outputPixels
+
 
 @njit
 def dither(color,stepSize, ditherThreshold):
@@ -180,6 +166,39 @@ def clip(value, min_val, max_val):
     return value
 
 
+@njit
+def edgeDetection(edgeThreshold, inputPixels):
+    outputPixels = np.copy(inputPixels)
+    edgeColor = (0,0,0, 255)
+    backgroundColor = (255,255,255, 255)
+    shadeColor = (128,128,128, 255)
+
+    for rowIndex, pixelColumn in enumerate(inputPixels):
+        for colIndex, pixel in enumerate(pixelColumn):
+            r = inputPixels[rowIndex, colIndex][0]
+            g = inputPixels[rowIndex, colIndex][1]
+            b = inputPixels[rowIndex, colIndex][2]
+            blackAndWhite = int(0.30*r + 0.59*g + 0.11*b)
+            
+            inputPixels[rowIndex, colIndex] = (blackAndWhite,blackAndWhite,blackAndWhite, 255)
+
+    for rowIndex, pixelColumn in enumerate(inputPixels):
+        for colIndex, pixel in enumerate(pixelColumn):
+
+            if(rowIndex >= 2 and rowIndex <= len(inputPixels) -2 and colIndex >=2 and colIndex <= len(inputPixels[0]) - 2):
+                if(inputPixels[rowIndex, colIndex][0] > inputPixels[rowIndex+1, colIndex][0]*edgeThreshold) or (inputPixels[rowIndex, colIndex][0] > inputPixels[rowIndex, colIndex+1][0]*edgeThreshold) or (inputPixels[rowIndex, colIndex][0] < inputPixels[rowIndex+1, colIndex][0]/edgeThreshold) or (inputPixels[rowIndex, colIndex][0] < inputPixels[rowIndex, colIndex+1][0]/edgeThreshold):
+                    outputPixels[rowIndex, colIndex] = edgeColor
+                else:
+                    outputPixels[rowIndex, colIndex] = backgroundColor
+                    #if(inputPixels[rowIndex, colIndex][0] < 100):
+                    #    outputPixels[rowIndex, colIndex] = shadeColor
+                    #else:
+                    #    outputPixels[rowIndex, colIndex] = backgroundColor
+                    #outputPixels[rowIndex, colIndex] = backgroundColor
+    print("Edge detection complete")
+    return outputPixels
+
+#Saves the image with 1 bit per channel
 def saveImage(imageName):
     img = Image.fromarray(pixelArray, 'RGBA')
     img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
@@ -187,24 +206,17 @@ def saveImage(imageName):
     img.save(imageName, optimize=True)
     print(f"Image saved as ",imageName)
 
+def saveImage2(imageName):
+    img = Image.fromarray(pixelArray, 'RGBA')
+    # Save the image
+    img.save(imageName, optimize=True)
+    print(f"Image saved as ",imageName)
 
 
-def generateRandomNoise():
-    matrix.clear()
-    for row in range(height):
-        a=[]
-        for column in range(width):
-            randomInt = random.randint(1,3)
-            #for p in range(16):
-            if(randomInt == 1):
-                a.append(pixel1)
-            elif(randomInt==2):
-                a.append(pixel2)
-            elif(randomInt==3):
-                a.append(pixel3)
-
-        matrix.append(a)
-
+inputType = sys.argv[1]
+loadedImage = sys.argv[2]
+outputPath = sys.argv[3]
+desiredProcess = sys.argv[4]
 
 if inputType == "image":
     loadImage(loadedImage)
@@ -214,6 +226,13 @@ if inputType == "image":
     elif desiredProcess == "posterize":
         posterize(8)
         saveImage(outputPath)
+    elif desiredProcess == "edge-detect":
+        pixelArray = blur(2, pixelArray)
+        pixelArray = edgeDetection(1.2, pixelArray)
+        saveImage2(outputPath)
+    elif desiredProcess == "blur":
+        pixelArray = blur(2, pixelArray)
+        saveImage2(outputPath)
     else:
         print("Please enter either 'dither' or 'posterize'")
 elif inputType == "video":
@@ -223,14 +242,3 @@ elif inputType == "video":
         print("Only video dithering is currently supported")
 
 print("Peak memory usage: ",(p.memory_info().peak_wset/1000)/1000,"MB")
-
-#loadImage("images.jpg")
-#modifyImage()
-#blur(4)
-#posterize(5)
-#posterize2(2)
-#ditherVideo("videos/blizzard-small.mp4")
-#assemble_video_from_frames("frames/", "videos/output.mp4", fps=24)
-#posterizeDither(2)
-#saveModifiedImage("new-image.png")
-#saveImage()
