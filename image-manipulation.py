@@ -70,10 +70,8 @@ def posterize(numOfColors):
 
 def ditherVideo(videoPath):
     imageArray = []
-    frameDirectory = "frames/"
     clip = VideoFileClip(videoPath)
     for i, frame in enumerate(clip.iter_frames(fps=clip.fps, dtype='uint8')):
-        framePath = f"{frameDirectory}frame_{i:04d}.png"
         global pixelArray
         pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
         pixelArray = posterizeDither(2, pixelArray)
@@ -83,7 +81,18 @@ def ditherVideo(videoPath):
     clip.write_videofile(outputPath, codec="libx264")
     print(f"Video saved to {outputPath}")
     
+def ditherGif(videoPath):
+    imageArray = []
+    clip = VideoFileClip(videoPath)
+    for i, frame in enumerate(clip.iter_frames(fps=clip.fps, dtype='uint8')):
+        global pixelArray
+        pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
+        pixelArray = posterizeDither(2, pixelArray)
+        imageArray.append(pixelArray)
 
+    clip = ImageSequenceClip(imageArray, fps=clip.fps)
+    clip.write_gif(outputPath)
+    print(f"Video GIF to {outputPath}")
 
 
 #Ordered dithering
@@ -218,6 +227,7 @@ loadedImage = sys.argv[2]
 outputPath = sys.argv[3]
 desiredProcess = sys.argv[4]
 
+#PNG
 if inputType == "image":
     loadImage(loadedImage)
     if desiredProcess == "dither":
@@ -235,9 +245,16 @@ if inputType == "image":
         saveImage2(outputPath)
     else:
         print("Please enter either 'dither' or 'posterize'")
+#mp4
 elif inputType == "video":
     if desiredProcess == "dither":
         ditherVideo(loadedImage)
+    else:
+        print("Only video dithering is currently supported")
+#Gif
+elif inputType == "gif":
+    if desiredProcess == "dither":
+        ditherGif(loadedImage)
     else:
         print("Only video dithering is currently supported")
 
