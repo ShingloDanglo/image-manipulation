@@ -9,98 +9,62 @@ from numba import njit, prange
 from moviepy import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
-p = psutil.Process()
+# =========================
+# IO
+# =========================
 
-def loadImage(imagePath):
-    global pixelArray
+def load_image(imagePath):
     image = Image.open(imagePath)
-    pixelArray = np.array(image)
+    return np.array(image)
 
-               
+#Saves the image with 1 bit per channel
+def saveImage(imageName):
+    img = Image.fromarray(pixelArray, 'RGBA')
+    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
+
+    img.save(imageName, optimize=True)
+    print(f"Image saved as ",imageName)
+
+def save_image(output_path, img_pixels):
+    img = Image.fromarray(img_pixels, 'RGBA')
+    # Save the image
+    img.save(output_path, optimize=True)
+    print(f"Image saved as ",output_path)
+
+
+# =========================
+# Utils
+# =========================
+
 @njit
-def blur(kernelSize, inputArray):
-    outputArray = np.copy(inputArray)
-
-    for rowIndex, pixelColumn in enumerate(inputArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-            if(rowIndex >= kernelSize and rowIndex <= len(inputArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(inputArray[0]) - kernelSize):
-                r = []
-                g = []
-                b = []
-
-                # Loop through neighboring pixels
-                for o in range(-kernelSize +1, kernelSize):
-                    for p in range(-kernelSize +1, kernelSize):
-                        neighbor_pixel = outputArray[rowIndex + o, colIndex + p]
-                        r.append(neighbor_pixel[0])
-                        g.append(neighbor_pixel[1])
-                        b.append(neighbor_pixel[2])
-
-                # Calculate the mean RGB values current pixel and its neighbours
-                meanR = int(np.mean(np.asarray(r)))
-                meanG = int(np.mean(np.asarray(g)))
-                meanB = int(np.mean(np.asarray(b)))
-
-                outputArray[rowIndex, colIndex] = (meanR, meanG, meanB, 255)
-    return outputArray
+def clip(value, min_val, max_val):
+    if value < min_val:
+        return min_val
+    elif value > max_val:
+        return max_val
+    return value
 
 
-#Greatly simplified posterization algorithm
-def posterize(numOfColors):
-    stepSize = round(256/(numOfColors-1))
-    tempArray = np.copy(pixelArray)
-    print(stepSize)
+# =========================
+# Image effects
+# =========================
 
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-
-
-            r = tempArray[rowIndex, colIndex][0]
-            g = tempArray[rowIndex, colIndex][1]
-            b = tempArray[rowIndex, colIndex][2]
-            #print("Before: ",r,", ",g,", ",b)
-
-            r = np.clip((round(r/ stepSize) * stepSize), 0, 255)
-            g = np.clip((round(g/ stepSize) * stepSize), 0, 255)
-            b = np.clip((round(b/ stepSize) * stepSize), 0, 255)
-            #print("After: ",r,", ",g,", ",b)
-
-            pixelArray[rowIndex, colIndex] = (r, g, b, 255)    
-
-
-def ditherVideo(videoPath):
-    imageArray = []
-    clip = VideoFileClip(videoPath)
-    for i, frame in enumerate(clip.iter_frames(fps=clip.fps, dtype='uint8')):
-        global pixelArray
-        pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
-        pixelArray = posterizeDither(2, pixelArray)
-        imageArray.append(pixelArray)
-
-    clip = ImageSequenceClip(imageArray, fps=clip.fps)
-    clip.write_videofile(outputPath, codec="libx264")
-    print(f"Video saved to {outputPath}")
+@njit
+def dither_pixel(color,stepSize, ditherThreshold):
+    quantizedColor = round(color//stepSize * stepSize)
     
-def ditherGif(videoPath):
-    imageArray = []
-    clip = VideoFileClip(videoPath)
-    for i, frame in enumerate(clip.iter_frames(fps=clip.fps, dtype='uint8')):
-        global pixelArray
-        pixelArray = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
-        pixelArray = posterizeDither(2, pixelArray)
-        imageArray.append(pixelArray)
-
-    clip = ImageSequenceClip(imageArray, fps=clip.fps)
-    clip.write_gif(outputPath)
-    print(f"Video GIF to {outputPath}")
+    if(color % stepSize) > ditherThreshold:
+        quantizedColor = min(quantizedColor + stepSize, 255)
+    return quantizedColor
 
 
 #Ordered dithering
 @njit(parallel=True)
-def posterizeDither(numOfColors, inputPixels):
-    stepSize = round(256/(numOfColors-1))
-    outputPixels = np.copy(inputPixels)
+def ordered_dither( inputPixels, colorSteps=2):
+    height, width, _ = inputPixels.shape
+    outputPixels = np.empty_like(inputPixels)
 
+    stepSize = int(256/(colorSteps-1))
 
     matrixSize = 8
     #2x2 matrix
@@ -131,52 +95,49 @@ def posterizeDither(numOfColors, inputPixels):
         ]) - 0.5)
 
 
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
+    for y in prange(height):
+        for x in range(width):
 
-            r = inputPixels[rowIndex, colIndex][0]
-            g = inputPixels[rowIndex, colIndex][1]
-            b = inputPixels[rowIndex, colIndex][2]
-            a = inputPixels[rowIndex, colIndex][3]
+            ditherThreshold = rule[y % matrixSize, x % matrixSize]
+            r, g, b, a = inputPixels[y, x]
 
-            ditherThreshold = rule[rowIndex % matrixSize, colIndex % matrixSize]-1
-            #ditherThreshold = (stepSize * (1.0 / 64.0) * (random.randint(1, 64) -0.5)) - 1
-            #print("DIther threshold: ",ditherThreshold)
+            outputPixels[y, x, 0] = dither_pixel(r, stepSize, ditherThreshold)
+            outputPixels[y, x, 1] = dither_pixel(g, stepSize, ditherThreshold)
+            outputPixels[y, x, 2] = dither_pixel(b, stepSize, ditherThreshold)
+            outputPixels[y, x, 3] = dither_pixel(a, stepSize, ditherThreshold)
             
-            newR = clip(dither(r, stepSize, ditherThreshold), 0, 255)
-            newG = clip(dither(g, stepSize, ditherThreshold), 0, 255)
-            newB = clip(dither(b, stepSize, ditherThreshold), 0, 255)
-            newA = clip(dither(a, stepSize, ditherThreshold), 0, 255)
-            outputPixels[rowIndex, colIndex] = (newR, newG, newB, newA)   
     print("Dither applied")
     return outputPixels
 
 
-@njit
-def dither(color,stepSize, ditherThreshold):
-    #quantizedColor = round(round(color/ stepSize) * stepSize)
-    quantizedColor = 0
-    #print("quantizedCOlor: ",quantizedColor)
-    #print("Color",color)
-    if(color % stepSize) >= ditherThreshold:
-        quantizedColor = clip(quantizedColor + stepSize, 0, 255)
-        #quantizedColor = 255
-        #print("True")
-    else:
-        pass
-    return quantizedColor
 
-@njit
-def clip(value, min_val, max_val):
-    if value < min_val:
-        return min_val
-    elif value > max_val:
-        return max_val
-    return value
+#Greatly simplified posterization algorithm
+def posterize(colorSteps, inputPixels):
+    stepSize = round(256/(colorSteps-1))
+    outputPixels = np.copy(inputPixels)
+
+    print(stepSize)
+
+    for rowIndex, pixelColumn in enumerate(pixelArray):
+        for colIndex, pixel in enumerate(pixelColumn):
 
 
+            r = inputPixels[rowIndex, colIndex][0]
+            g = inputPixels[rowIndex, colIndex][1]
+            b = inputPixels[rowIndex, colIndex][2]
+            #print("Before: ",r,", ",g,", ",b)
+
+            r = clip((round(r/ stepSize) * stepSize), 0, 255)
+            g = clip((round(g/ stepSize) * stepSize), 0, 255)
+            b = clip((round(b/ stepSize) * stepSize), 0, 255)
+            #print("After: ",r,", ",g,", ",b)
+
+            outputPixels[rowIndex, colIndex] = (r, g, b, 255)    
+
+    return outputPixels
+
 @njit
-def edgeDetection(edgeThreshold, inputPixels):
+def edge_detect(inputPixels, edgeThreshold):
     outputPixels = np.copy(inputPixels)
     edgeColor = (0,0,0, 255)
     backgroundColor = (255,255,255, 255)
@@ -199,63 +160,110 @@ def edgeDetection(edgeThreshold, inputPixels):
                     outputPixels[rowIndex, colIndex] = edgeColor
                 else:
                     outputPixels[rowIndex, colIndex] = backgroundColor
-                    #if(inputPixels[rowIndex, colIndex][0] < 100):
-                    #    outputPixels[rowIndex, colIndex] = shadeColor
-                    #else:
-                    #    outputPixels[rowIndex, colIndex] = backgroundColor
-                    #outputPixels[rowIndex, colIndex] = backgroundColor
+                    if(inputPixels[rowIndex, colIndex][0] < 100):
+                        outputPixels[rowIndex, colIndex] = shadeColor
+                    else:
+                        outputPixels[rowIndex, colIndex] = backgroundColor
+                    
     print("Edge detection complete")
     return outputPixels
 
-#Saves the image with 1 bit per channel
-def saveImage(imageName):
-    img = Image.fromarray(pixelArray, 'RGBA')
-    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
-    # Save the image
-    img.save(imageName, optimize=True)
-    print(f"Image saved as ",imageName)
-
-def saveImage2(imageName):
-    img = Image.fromarray(pixelArray, 'RGBA')
-    # Save the image
-    img.save(imageName, optimize=True)
-    print(f"Image saved as ",imageName)
 
 
-inputType = sys.argv[1]
-loadedImage = sys.argv[2]
-outputPath = sys.argv[3]
-desiredProcess = sys.argv[4]
+@njit
+def blur(kernelSize, inputArray):
+    outputArray = np.copy(inputArray)
 
-#PNG
-if inputType == "image":
-    loadImage(loadedImage)
-    if desiredProcess == "dither":
-        pixelArray = posterizeDither(2, pixelArray)
-        saveImage(outputPath)
-    elif desiredProcess == "posterize":
-        posterize(8)
-        saveImage(outputPath)
-    elif desiredProcess == "edge-detect":
-        pixelArray = blur(2, pixelArray)
-        pixelArray = edgeDetection(1.2, pixelArray)
-        saveImage2(outputPath)
-    elif desiredProcess == "blur":
-        pixelArray = blur(2, pixelArray)
-        saveImage2(outputPath)
-    else:
-        print("Please enter either 'dither' or 'posterize'")
-#mp4
-elif inputType == "video":
-    if desiredProcess == "dither":
-        ditherVideo(loadedImage)
-    else:
-        print("Only video dithering is currently supported")
-#Gif
-elif inputType == "gif":
-    if desiredProcess == "dither":
-        ditherGif(loadedImage)
-    else:
-        print("Only video dithering is currently supported")
+    for rowIndex, pixelColumn in enumerate(inputArray):
+        for colIndex, pixel in enumerate(pixelColumn):
+            if(rowIndex >= kernelSize and rowIndex <= len(inputArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(inputArray[0]) - kernelSize):
+                r = []
+                g = []
+                b = []
 
-print("Peak memory usage: ",(p.memory_info().peak_wset/1000)/1000,"MB")
+                # Loop through neighboring pixels
+                for o in range(-kernelSize +1, kernelSize):
+                    for p in range(-kernelSize +1, kernelSize):
+                        neighbor_pixel = outputArray[rowIndex + o, colIndex + p]
+                        r.append(neighbor_pixel[0])
+                        g.append(neighbor_pixel[1])
+                        b.append(neighbor_pixel[2])
+
+                # Calculate the mean RGB values current pixel and its neighbours
+                meanR = int(np.mean(np.asarray(r)))
+                meanG = int(np.mean(np.asarray(g)))
+                meanB = int(np.mean(np.asarray(b)))
+
+                outputArray[rowIndex, colIndex] = (meanR, meanG, meanB, 255)
+    return outputArray
+
+
+# =========================
+# Video effects
+# =========================
+
+
+def process_video(input_path, output_path, processor):
+    clip = VideoFileClip(input_path)
+    frames = []
+    pixel_array = []
+
+    for frame in clip.iter_frames(dtype='uint8'):
+        pixel_array = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
+        frames.append(processor(pixel_array))
+
+    clip = ImageSequenceClip(frames, fps=clip.fps)
+    clip.write_videofile(output_path, codec="libx264")
+    print(f"Video saved to {output_path}")
+    
+def process_gif(input_path, output_path, processor):
+    clip = VideoFileClip(input_path)
+    frames = []
+    pixel_array = []
+    
+    for frame in clip.iter_frames(dtype='uint8'):
+        pixel_array = np.dstack([frame, np.full(frame.shape[:2], 255, dtype="uint8")])  # Convert to RGBA
+        frames.append(processor(pixel_array))
+
+    clip = ImageSequenceClip(frames, fps=clip.fps)
+    clip.write_gif(output_path)
+    print(f"Video GIF to {output_path}")
+
+
+
+
+
+# =========================
+# Main CLI
+# =========================
+
+def main():
+
+    p = psutil.Process()
+    input_type, input_path, output_path, action = sys.argv[1:5]
+
+    processors = {
+        "dither": lambda img_pixels: ordered_dither(img_pixels, 4),
+        "posterize": lambda img_pixels: posterize(4, img_pixels),
+        "edge-detect": lambda img_pixels: edge_detect(1.1, blur(img_pixels, 2)),
+        "blur": lambda img_pixels: blur(2, img_pixels),
+    }
+
+    if action not in processors:
+        print("Invalid process")
+        return
+
+    if input_type == "image":
+        img_pixels = load_image(input_path)
+        result = processors[action](img_pixels)
+        save_image(output_path, result)
+
+    elif input_type == "video":
+        process_video(input_path, output_path, processors[action])
+
+    elif input_type == "gif":
+        process_gif(input_path, output_path, processors[action])   
+
+
+if __name__ == "__main__":
+    main()
