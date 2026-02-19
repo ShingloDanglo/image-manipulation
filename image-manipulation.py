@@ -1,9 +1,6 @@
-import os
 import sys
 import psutil
 from PIL import Image
-import random
-import time
 import numpy as np
 from numba import njit, prange
 from moviepy import VideoFileClip
@@ -18,12 +15,12 @@ def load_image(imagePath):
     return np.array(image)
 
 #Saves the image with 1 bit per channel
-def saveImage(imageName):
-    img = Image.fromarray(pixelArray, 'RGBA')
-    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
+#def saveImage(imageName):
+#    img = Image.fromarray(pixelArray, 'RGBA')
+#    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
 
-    img.save(imageName, optimize=True)
-    print(f"Image saved as ",imageName)
+#    img.save(imageName, optimize=True)
+#    print(f"Image saved as ",imageName)
 
 def save_image(output_path, img_pixels):
     img = Image.fromarray(img_pixels, 'RGBA')
@@ -31,6 +28,7 @@ def save_image(output_path, img_pixels):
     img.save(output_path, optimize=True)
     print(f"Image saved as ",output_path)
 
+# TODO: Rewrite edge detection and blur functions
 
 # =========================
 # Utils
@@ -60,9 +58,9 @@ def dither_pixel(color,stepSize, ditherThreshold):
 
 #Ordered dithering
 @njit(parallel=True)
-def ordered_dither( inputPixels, colorSteps=2):
-    height, width, _ = inputPixels.shape
-    outputPixels = np.empty_like(inputPixels)
+def ordered_dither(input_pixels, colorSteps=2):
+    height, width, _ = input_pixels.shape
+    outputPixels = np.empty_like(input_pixels)
 
     stepSize = int(256/(colorSteps-1))
 
@@ -99,7 +97,7 @@ def ordered_dither( inputPixels, colorSteps=2):
         for x in range(width):
 
             ditherThreshold = rule[y % matrixSize, x % matrixSize]
-            r, g, b, a = inputPixels[y, x]
+            r, g, b, a = input_pixels[y, x]
 
             outputPixels[y, x, 0] = dither_pixel(r, stepSize, ditherThreshold)
             outputPixels[y, x, 1] = dither_pixel(g, stepSize, ditherThreshold)
@@ -110,31 +108,24 @@ def ordered_dither( inputPixels, colorSteps=2):
     return outputPixels
 
 
-
-#Greatly simplified posterization algorithm
-def posterize(colorSteps, inputPixels):
-    stepSize = round(256/(colorSteps-1))
-    outputPixels = np.copy(inputPixels)
+def posterize(input_pixels, colorSteps):
+    stepSize = int(256/(colorSteps-1))
+    height, width, _ = input_pixels.shape
+    output_pixels = np.empty_like(input_pixels)
+    
 
     print(stepSize)
 
-    for rowIndex, pixelColumn in enumerate(pixelArray):
-        for colIndex, pixel in enumerate(pixelColumn):
+    for y in prange(height):
+        for x in range(width):
+            r, g, b, a = input_pixels[y, x]
 
+            output_pixels[y, x, 0] = clip((round(r/ stepSize) * stepSize), 0, 255)
+            output_pixels[y, x, 1] = clip((round(g/ stepSize) * stepSize), 0, 255)
+            output_pixels[y, x, 2] = clip((round(b/ stepSize) * stepSize), 0, 255)
+            output_pixels[y, x, 3] = 255
 
-            r = inputPixels[rowIndex, colIndex][0]
-            g = inputPixels[rowIndex, colIndex][1]
-            b = inputPixels[rowIndex, colIndex][2]
-            #print("Before: ",r,", ",g,", ",b)
-
-            r = clip((round(r/ stepSize) * stepSize), 0, 255)
-            g = clip((round(g/ stepSize) * stepSize), 0, 255)
-            b = clip((round(b/ stepSize) * stepSize), 0, 255)
-            #print("After: ",r,", ",g,", ",b)
-
-            outputPixels[rowIndex, colIndex] = (r, g, b, 255)    
-
-    return outputPixels
+    return output_pixels
 
 @njit
 def edge_detect(inputPixels, edgeThreshold):
@@ -199,7 +190,7 @@ def blur(kernelSize, inputArray):
 
 
 # =========================
-# Video effects
+# Video
 # =========================
 
 
@@ -230,9 +221,6 @@ def process_gif(input_path, output_path, processor):
     print(f"Video GIF to {output_path}")
 
 
-
-
-
 # =========================
 # Main CLI
 # =========================
@@ -243,8 +231,8 @@ def main():
     input_type, input_path, output_path, action = sys.argv[1:5]
 
     processors = {
-        "dither": lambda img_pixels: ordered_dither(img_pixels, 4),
-        "posterize": lambda img_pixels: posterize(4, img_pixels),
+        "dither": lambda img_pixels: ordered_dither(img_pixels, 2),
+        "posterize": lambda img_pixels: posterize(img_pixels, 3),
         "edge-detect": lambda img_pixels: edge_detect(1.1, blur(img_pixels, 2)),
         "blur": lambda img_pixels: blur(2, img_pixels),
     }
