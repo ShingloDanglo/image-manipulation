@@ -200,6 +200,8 @@ def make_seamless(input_pixels, num):
     height, width, _ = input_pixels.shape
     output_pixels = np.copy(input_pixels)
 
+    num = round(width / 4)
+
     mid_point = round(width/2)
     for y in prange(height):
         for x in range(num):
@@ -216,6 +218,8 @@ def make_seamless(input_pixels, num):
             output_pixels[y, x, 2] = round(input_pixels[y, mid_point + x, 2] * mix_multiplier) +  round(input_pixels[y,  x, 2] * (1 - mix_multiplier ))
 
     input_pixels = np.copy(output_pixels)
+
+    num = round(height / 4)
 
     mid_point = round(height/2)
     for x in prange(width):
@@ -282,8 +286,8 @@ def main():
         "posterize": lambda img_pixels: posterize(img_pixels, 5),
         "edge-detect": lambda img_pixels: edge_detect(1.1, blur(img_pixels, 2)),
         "blur": lambda img_pixels: blur(2, img_pixels),
-        "resize": lambda img_pixels: resize_image(img_pixels, 256, 256),
-        "make-seamless": lambda img_pixels: make_seamless(img_pixels, 150),
+        "resize": lambda img_pixels: resize_image(img_pixels, 1024, 1024),
+        "make-seamless": lambda img_pixels: make_seamless(img_pixels, 100),
     }
 
 
