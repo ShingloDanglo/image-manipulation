@@ -42,6 +42,13 @@ def clip(value, min_val, max_val):
         return max_val
     return value
 
+def resize_image(input_pixels, new_width, new_height):
+    img = Image.fromarray(input_pixels, 'RGBA')
+    new_size = (new_width, new_height)
+    img = img.resize(new_size)
+
+    return np.array(img)
+
 
 # =========================
 # Image effects
@@ -57,14 +64,13 @@ def dither_pixel(color,stepSize, ditherThreshold):
 
 
 #Ordered dithering
-@njit(parallel=True)
 def ordered_dither(input_pixels, colorSteps=2):
     height, width, _ = input_pixels.shape
     outputPixels = np.empty_like(input_pixels)
 
     stepSize = int(256/(colorSteps-1))
 
-    matrixSize = 8
+    matrixSize = 2
     #2x2 matrix
     if(matrixSize == 2):
         rule = stepSize * (1.0 / 4.0) * (np.array([
@@ -189,6 +195,47 @@ def blur(kernelSize, inputArray):
     return outputArray
 
 
+@njit
+def make_seamless(input_pixels, num):
+    height, width, _ = input_pixels.shape
+    output_pixels = np.copy(input_pixels)
+
+    mid_point = round(width/2)
+    for y in prange(height):
+        for x in range(num):
+            mix_multiplier = ((num -x) + 1) / num
+
+            # Move the left half of the middle section to the right side of the image
+            output_pixels[y, width - 1 - x, 0] = round(input_pixels[y, mid_point - x, 0] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 0] * (1 - mix_multiplier ))
+            output_pixels[y, width  - 1 - x, 1] = round(input_pixels[y, mid_point - x, 1] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 1] * (1 - mix_multiplier ))
+            output_pixels[y, width  - 1 - x, 2] = round(input_pixels[y, mid_point - x, 2] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 2] * (1 - mix_multiplier ))
+
+            # Move the right half of the middle section to the left side of the image
+            output_pixels[y, x, 0] = round(input_pixels[y, mid_point + x, 0] * mix_multiplier) +  round(input_pixels[y,  x, 0] * (1 - mix_multiplier ))
+            output_pixels[y, x, 1] = round(input_pixels[y, mid_point + x, 1] * mix_multiplier) +  round(input_pixels[y,  x, 1] * (1 - mix_multiplier ))
+            output_pixels[y, x, 2] = round(input_pixels[y, mid_point + x, 2] * mix_multiplier) +  round(input_pixels[y,  x, 2] * (1 - mix_multiplier ))
+
+    input_pixels = np.copy(output_pixels)
+
+    mid_point = round(height/2)
+    for x in prange(width):
+        for y in range(num):
+            mix_multiplier = ((num -y) + 1) / num
+
+            # Move the top half of the middle section to the bottom of the image
+            output_pixels[height - 1 - y, x, 0] = round(input_pixels[mid_point - y, x, 0] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 0] * (1 - mix_multiplier ))
+            output_pixels[height - 1 - y, x, 1] = round(input_pixels[mid_point - y, x, 1] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 1] * (1 - mix_multiplier ))
+            output_pixels[height - 1 - y, x, 2] = round(input_pixels[mid_point - y, x, 2] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 2] * (1 - mix_multiplier ))
+
+            # Move the bottom half of the middle section to the top of the image
+            output_pixels[y, x, 0] = round(input_pixels[mid_point + y, x, 0] * mix_multiplier) +  round(input_pixels[y,  x, 0] * (1 - mix_multiplier ))
+            output_pixels[y, x, 1] = round(input_pixels[mid_point + y, x, 1] * mix_multiplier) +  round(input_pixels[y,  x, 1] * (1 - mix_multiplier ))
+            output_pixels[y, x, 2] = round(input_pixels[mid_point + y, x, 2] * mix_multiplier) +  round(input_pixels[y,  x, 2] * (1 - mix_multiplier ))
+ 
+
+    return output_pixels
+
+
 # =========================
 # Video
 # =========================
@@ -228,23 +275,29 @@ def process_gif(input_path, output_path, processor):
 def main():
 
     p = psutil.Process()
-    input_type, input_path, output_path, action = sys.argv[1:5]
+    input_type, input_path, output_path, *actions = sys.argv[1:]
 
     processors = {
-        "dither": lambda img_pixels: ordered_dither(img_pixels, 2),
-        "posterize": lambda img_pixels: posterize(img_pixels, 3),
+        "dither": lambda img_pixels: ordered_dither(img_pixels, 5),
+        "posterize": lambda img_pixels: posterize(img_pixels, 5),
         "edge-detect": lambda img_pixels: edge_detect(1.1, blur(img_pixels, 2)),
         "blur": lambda img_pixels: blur(2, img_pixels),
+        "resize": lambda img_pixels: resize_image(img_pixels, 256, 256),
+        "make-seamless": lambda img_pixels: make_seamless(img_pixels, 150),
     }
 
-    if action not in processors:
-        print("Invalid process")
-        return
+
 
     if input_type == "image":
         img_pixels = load_image(input_path)
-        result = processors[action](img_pixels)
-        save_image(output_path, result)
+
+        for action in actions:
+            if action not in processors:
+                print("Invalid process")
+                return
+            img_pixels = processors[action](img_pixels)
+            
+        save_image(output_path, img_pixels)
 
     elif input_type == "video":
         process_video(input_path, output_path, processors[action])
