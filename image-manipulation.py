@@ -65,12 +65,12 @@ def dither_pixel(color,stepSize, ditherThreshold):
 
 #Ordered dithering
 def ordered_dither(input_pixels, colorSteps=2):
-    height, width, _ = input_pixels.shape
+    width, height, _ = input_pixels.shape
     outputPixels = np.empty_like(input_pixels)
 
     stepSize = int(256/(colorSteps-1))
 
-    matrixSize = 2
+    matrixSize = 8
     #2x2 matrix
     if(matrixSize == 2):
         rule = stepSize * (1.0 / 4.0) * (np.array([
@@ -102,21 +102,21 @@ def ordered_dither(input_pixels, colorSteps=2):
     for y in prange(height):
         for x in range(width):
 
-            ditherThreshold = rule[y % matrixSize, x % matrixSize]
-            r, g, b, a = input_pixels[y, x]
+            ditherThreshold = rule[x % matrixSize, y % matrixSize]
+            r, g, b, a = input_pixels[x, y]
 
-            outputPixels[y, x, 0] = dither_pixel(r, stepSize, ditherThreshold)
-            outputPixels[y, x, 1] = dither_pixel(g, stepSize, ditherThreshold)
-            outputPixels[y, x, 2] = dither_pixel(b, stepSize, ditherThreshold)
-            outputPixels[y, x, 3] = dither_pixel(a, stepSize, ditherThreshold)
+            outputPixels[x, y, 0] = dither_pixel(r, stepSize, ditherThreshold)
+            outputPixels[x, y, 1] = dither_pixel(g, stepSize, ditherThreshold)
+            outputPixels[x, y, 2] = dither_pixel(b, stepSize, ditherThreshold)
+            outputPixels[x, y, 3] = dither_pixel(a, stepSize, ditherThreshold)
             
     print("Dither applied")
     return outputPixels
 
 
 def posterize(input_pixels, colorSteps):
-    stepSize = int(256/(colorSteps-1))
-    height, width, _ = input_pixels.shape
+    stepSize = int(256/(colorSteps))
+    width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
     
 
@@ -124,12 +124,12 @@ def posterize(input_pixels, colorSteps):
 
     for y in prange(height):
         for x in range(width):
-            r, g, b, a = input_pixels[y, x]
+            r, g, b, a = input_pixels[x, y]
 
-            output_pixels[y, x, 0] = clip((round(r/ stepSize) * stepSize), 0, 255)
-            output_pixels[y, x, 1] = clip((round(g/ stepSize) * stepSize), 0, 255)
-            output_pixels[y, x, 2] = clip((round(b/ stepSize) * stepSize), 0, 255)
-            output_pixels[y, x, 3] = 255
+            output_pixels[x, y, 0] = clip((round(r/ stepSize) * stepSize), 0, 255)
+            output_pixels[x, y, 1] = clip((round(g/ stepSize) * stepSize), 0, 255)
+            output_pixels[x, y, 2] = clip((round(b/ stepSize) * stepSize), 0, 255)
+            output_pixels[x, y, 3] = clip((round(a/ stepSize) * stepSize), 0, 255)
 
     return output_pixels
 
@@ -168,36 +168,47 @@ def edge_detect(inputPixels, edgeThreshold):
 
 
 @njit
-def blur(kernelSize, inputArray):
-    outputArray = np.copy(inputArray)
+def box_blur(input_pixels, kernel_sie):
+    width, height, _ = input_pixels.shape
+    output_pixels = np.copy(input_pixels)
 
-    for rowIndex, pixelColumn in enumerate(inputArray):
-        for colIndex, pixel in enumerate(pixelColumn):
-            if(rowIndex >= kernelSize and rowIndex <= len(inputArray) -kernelSize and colIndex >=kernelSize and colIndex <= len(inputArray[0]) - kernelSize):
-                r = []
-                g = []
-                b = []
+    for y in prange(height):
+        for x in range(width):
+            r_sum = 0
+            g_sum = 0
+            b_sum = 0
+            a_sum = 0
+            count = 0
 
-                # Loop through neighboring pixels
-                for o in range(-kernelSize +1, kernelSize):
-                    for p in range(-kernelSize +1, kernelSize):
-                        neighbor_pixel = outputArray[rowIndex + o, colIndex + p]
-                        r.append(neighbor_pixel[0])
-                        g.append(neighbor_pixel[1])
-                        b.append(neighbor_pixel[2])
+            x0 = clip(x - kernel_sie, 0, width - 1)
+            x1 = clip(x + kernel_sie, 0, width - 1)
 
-                # Calculate the mean RGB values current pixel and its neighbours
-                meanR = int(np.mean(np.asarray(r)))
-                meanG = int(np.mean(np.asarray(g)))
-                meanB = int(np.mean(np.asarray(b)))
+            y0 = clip(y - kernel_sie, 0, height - 1)
+            y1 = clip(y + kernel_sie, 0, height - 1)
 
-                outputArray[rowIndex, colIndex] = (meanR, meanG, meanB, 255)
-    return outputArray
+            # Loop through neighboring pixels
+            for ny in range(y0, y1 + 1):
+                for nx in range(x0, x1 + 1):
+                    pixel = input_pixels[nx, ny]
+                    r_sum += pixel[0]
+                    g_sum += pixel[1]
+                    b_sum += pixel[2]
+                    a_sum += pixel[3]
+                    count += 1
+
+
+            output_pixels[x, y, 0] = r_sum // count
+            output_pixels[x, y, 1] = g_sum // count
+            output_pixels[x, y, 2] = b_sum // count
+            output_pixels[x, y, 3] = a_sum // count
+
+    print("Image box blurred")
+    return output_pixels
 
 
 @njit
 def make_seamless(input_pixels, num):
-    height, width, _ = input_pixels.shape
+    width, height, _ = input_pixels.shape
     output_pixels = np.copy(input_pixels)
 
     num = round(width / 4)
@@ -208,14 +219,14 @@ def make_seamless(input_pixels, num):
             mix_multiplier = ((num -x) + 1) / num
 
             # Move the left half of the middle section to the right side of the image
-            output_pixels[y, width - 1 - x, 0] = round(input_pixels[y, mid_point - x, 0] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 0] * (1 - mix_multiplier ))
-            output_pixels[y, width  - 1 - x, 1] = round(input_pixels[y, mid_point - x, 1] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 1] * (1 - mix_multiplier ))
-            output_pixels[y, width  - 1 - x, 2] = round(input_pixels[y, mid_point - x, 2] * mix_multiplier) +  round(input_pixels[y,  width - 1 - x, 2] * (1 - mix_multiplier ))
+            output_pixels[width - 1 - x, y, 0] = round(input_pixels[mid_point - x, y, 0] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 0] * (1 - mix_multiplier ))
+            output_pixels[width  - 1 - x, y, 1] = round(input_pixels[mid_point - x, y, 1] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 1] * (1 - mix_multiplier ))
+            output_pixels[width  - 1 - x, y, 2] = round(input_pixels[mid_point - x, y, 2] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 2] * (1 - mix_multiplier ))
 
             # Move the right half of the middle section to the left side of the image
-            output_pixels[y, x, 0] = round(input_pixels[y, mid_point + x, 0] * mix_multiplier) +  round(input_pixels[y,  x, 0] * (1 - mix_multiplier ))
-            output_pixels[y, x, 1] = round(input_pixels[y, mid_point + x, 1] * mix_multiplier) +  round(input_pixels[y,  x, 1] * (1 - mix_multiplier ))
-            output_pixels[y, x, 2] = round(input_pixels[y, mid_point + x, 2] * mix_multiplier) +  round(input_pixels[y,  x, 2] * (1 - mix_multiplier ))
+            output_pixels[x, y, 0] = round(input_pixels[mid_point + x, y, 0] * mix_multiplier) +  round(input_pixels[x, y, 0] * (1 - mix_multiplier ))
+            output_pixels[x, y, 1] = round(input_pixels[mid_point + x, y, 1] * mix_multiplier) +  round(input_pixels[x, y, 1] * (1 - mix_multiplier ))
+            output_pixels[x, y, 2] = round(input_pixels[mid_point + x, y, 2] * mix_multiplier) +  round(input_pixels[x, y, 2] * (1 - mix_multiplier ))
 
     input_pixels = np.copy(output_pixels)
 
@@ -227,14 +238,14 @@ def make_seamless(input_pixels, num):
             mix_multiplier = ((num -y) + 1) / num
 
             # Move the top half of the middle section to the bottom of the image
-            output_pixels[height - 1 - y, x, 0] = round(input_pixels[mid_point - y, x, 0] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 0] * (1 - mix_multiplier ))
-            output_pixels[height - 1 - y, x, 1] = round(input_pixels[mid_point - y, x, 1] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 1] * (1 - mix_multiplier ))
-            output_pixels[height - 1 - y, x, 2] = round(input_pixels[mid_point - y, x, 2] * mix_multiplier) +  round(input_pixels[height - 1 - y,  x, 2] * (1 - mix_multiplier ))
+            output_pixels[x, height - 1 - y, 0] = round(input_pixels[x, mid_point - y, 0] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 0] * (1 - mix_multiplier ))
+            output_pixels[x, height - 1 - y, 1] = round(input_pixels[x, mid_point - y, 1] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 1] * (1 - mix_multiplier ))
+            output_pixels[x, height - 1 - y, 2] = round(input_pixels[x, mid_point - y, 2] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 2] * (1 - mix_multiplier ))
 
             # Move the bottom half of the middle section to the top of the image
-            output_pixels[y, x, 0] = round(input_pixels[mid_point + y, x, 0] * mix_multiplier) +  round(input_pixels[y,  x, 0] * (1 - mix_multiplier ))
-            output_pixels[y, x, 1] = round(input_pixels[mid_point + y, x, 1] * mix_multiplier) +  round(input_pixels[y,  x, 1] * (1 - mix_multiplier ))
-            output_pixels[y, x, 2] = round(input_pixels[mid_point + y, x, 2] * mix_multiplier) +  round(input_pixels[y,  x, 2] * (1 - mix_multiplier ))
+            output_pixels[x, y, 0] = round(input_pixels[x, mid_point + y, 0] * mix_multiplier) +  round(input_pixels[x, y, 0] * (1 - mix_multiplier ))
+            output_pixels[x, y, 1] = round(input_pixels[x, mid_point + y, 1] * mix_multiplier) +  round(input_pixels[x, y, 1] * (1 - mix_multiplier ))
+            output_pixels[x, y, 2] = round(input_pixels[x, mid_point + y, 2] * mix_multiplier) +  round(input_pixels[x, y, 2] * (1 - mix_multiplier ))
  
 
     return output_pixels
@@ -282,10 +293,10 @@ def main():
     input_type, input_path, output_path, *actions = sys.argv[1:]
 
     processors = {
-        "dither": lambda img_pixels: ordered_dither(img_pixels, 5),
-        "posterize": lambda img_pixels: posterize(img_pixels, 5),
-        "edge-detect": lambda img_pixels: edge_detect(1.1, blur(img_pixels, 2)),
-        "blur": lambda img_pixels: blur(2, img_pixels),
+        "dither": lambda img_pixels: ordered_dither(img_pixels, 4),
+        "posterize": lambda img_pixels: posterize(img_pixels, 4),
+        "edge-detect": lambda img_pixels: edge_detect(1.1, box_blur(img_pixels, 2)),
+        "box-blur": lambda img_pixels: box_blur(img_pixels, 1),
         "resize": lambda img_pixels: resize_image(img_pixels, 1024, 1024),
         "make-seamless": lambda img_pixels: make_seamless(img_pixels, 100),
     }
