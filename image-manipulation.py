@@ -28,7 +28,7 @@ def save_image(output_path, img_pixels):
     img.save(output_path, optimize=True)
     print(f"Image saved as ",output_path)
 
-# TODO: Rewrite edge detection and blur functions
+# TODO: Rewrite edge detection
 
 # =========================
 # Utils
@@ -49,37 +49,51 @@ def resize_image(input_pixels, new_width, new_height):
 
     return np.array(img)
 
+@njit
+def generate_gaussian_kernel(size, sigma):
+    """ Outputs a 1d gaussian kernel """
+    radius = size // 2
+    
+    kernel = np.zeros(size)
+
+    for i in range(size):
+        x = i - radius
+        kernel[i] = np.exp(-(x*x) / (2*sigma*sigma))
+
+    kernel /= np.sum(kernel)
+    return kernel
 
 # =========================
 # Image effects
 # =========================
 
-@njit
-def dither_pixel(color,stepSize, ditherThreshold):
-    quantizedColor = round(color//stepSize * stepSize)
+@njit(parallel=True)
+def dither_pixel(color,step_size, dither_threshold):
+    quantized_color = round(color//step_size * step_size)
     
-    if(color % stepSize) > ditherThreshold:
-        quantizedColor = min(quantizedColor + stepSize, 255)
-    return quantizedColor
+    if(color % step_size) > dither_threshold:
+        quantized_color = min(quantized_color + step_size, 255)
+    return quantized_color
 
 
 #Ordered dithering
-def ordered_dither(input_pixels, colorSteps=2):
+@njit(parallel=True)
+def ordered_dither(input_pixels, color_steps=2):
     width, height, _ = input_pixels.shape
-    outputPixels = np.empty_like(input_pixels)
+    output_pixels = np.empty_like(input_pixels)
 
-    stepSize = int(256/(colorSteps-1))
+    step_size = int(256/(color_steps-1))
 
-    matrixSize = 8
+    matrix_size = 8
     #2x2 matrix
-    if(matrixSize == 2):
-        rule = stepSize * (1.0 / 4.0) * (np.array([
+    if(matrix_size == 2):
+        rule = step_size * (1.0 / 4.0) * (np.array([
             [1, 3],
             [4, 2]
         ]) - 0.5)
     #4x4 matrix
-    elif(matrixSize == 4):
-        rule = stepSize * (1.0 / 16.0) * (np.array([
+    elif(matrix_size == 4):
+        rule = step_size * (1.0 / 16.0) * (np.array([
             [1, 9, 3, 11],
             [13, 5, 15, 7],
             [4, 12, 2, 10],
@@ -87,7 +101,7 @@ def ordered_dither(input_pixels, colorSteps=2):
         ]) - 0.5)
     #8x8 matrix
     else:
-        rule = stepSize * (1.0 / 64.0) * (np.array([
+        rule = step_size * (1.0 / 64.0) * (np.array([
             [1, 37, 9, 45, 3, 39, 11, 47],
             [49, 17, 57, 25, 51, 19, 59, 27],
             [13, 41, 5, 33, 15, 43, 7, 35],
@@ -102,25 +116,22 @@ def ordered_dither(input_pixels, colorSteps=2):
     for y in prange(height):
         for x in range(width):
 
-            ditherThreshold = rule[x % matrixSize, y % matrixSize]
+            dither_threshold = rule[x % matrix_size, y % matrix_size]
             r, g, b, a = input_pixels[x, y]
 
-            outputPixels[x, y, 0] = dither_pixel(r, stepSize, ditherThreshold)
-            outputPixels[x, y, 1] = dither_pixel(g, stepSize, ditherThreshold)
-            outputPixels[x, y, 2] = dither_pixel(b, stepSize, ditherThreshold)
-            outputPixels[x, y, 3] = dither_pixel(a, stepSize, ditherThreshold)
+            output_pixels[x, y, 0] = dither_pixel(r, step_size, dither_threshold)
+            output_pixels[x, y, 1] = dither_pixel(g, step_size, dither_threshold)
+            output_pixels[x, y, 2] = dither_pixel(b, step_size, dither_threshold)
+            output_pixels[x, y, 3] = dither_pixel(a, step_size, dither_threshold)
             
     print("Dither applied")
-    return outputPixels
+    return output_pixels
 
-
-def posterize(input_pixels, colorSteps):
-    stepSize = int(256/(colorSteps))
+@njit(parallel=True)
+def posterize(input_pixels, color_steps):
+    stepSize = int(256/(color_steps))
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
-    
-
-    print(stepSize)
 
     for y in prange(height):
         for x in range(width):
@@ -133,42 +144,54 @@ def posterize(input_pixels, colorSteps):
 
     return output_pixels
 
+
 @njit
-def edge_detect(inputPixels, edgeThreshold):
-    outputPixels = np.copy(inputPixels)
-    edgeColor = (0,0,0, 255)
-    backgroundColor = (255,255,255, 255)
-    shadeColor = (128,128,128, 255)
+def sobel_edge_detect(input_pixels):
+    width, height, _ = input_pixels.shape
+    output_pixels = np.empty_like(input_pixels)
+    
+    x_matrix = np.array([
+        [-1, 0, 1],
+        [-2, 0, 2],
+        [-1, 0, 1]
+    ])
 
-    for rowIndex, pixelColumn in enumerate(inputPixels):
-        for colIndex, pixel in enumerate(pixelColumn):
-            r = inputPixels[rowIndex, colIndex][0]
-            g = inputPixels[rowIndex, colIndex][1]
-            b = inputPixels[rowIndex, colIndex][2]
-            blackAndWhite = int(0.30*r + 0.59*g + 0.11*b)
-            
-            inputPixels[rowIndex, colIndex] = (blackAndWhite,blackAndWhite,blackAndWhite, 255)
+    y_matrix = np.array([
+        [-1, -2,-1],
+        [0, 0,0],
+        [1, 2, 1]
+    ])
 
-    for rowIndex, pixelColumn in enumerate(inputPixels):
-        for colIndex, pixel in enumerate(pixelColumn):
+    for y in prange(height):
+        for x in range(width):
 
-            if(rowIndex >= 2 and rowIndex <= len(inputPixels) -2 and colIndex >=2 and colIndex <= len(inputPixels[0]) - 2):
-                if(inputPixels[rowIndex, colIndex][0] > inputPixels[rowIndex+1, colIndex][0]*edgeThreshold) or (inputPixels[rowIndex, colIndex][0] > inputPixels[rowIndex, colIndex+1][0]*edgeThreshold) or (inputPixels[rowIndex, colIndex][0] < inputPixels[rowIndex+1, colIndex][0]/edgeThreshold) or (inputPixels[rowIndex, colIndex][0] < inputPixels[rowIndex, colIndex+1][0]/edgeThreshold):
-                    outputPixels[rowIndex, colIndex] = edgeColor
-                else:
-                    outputPixels[rowIndex, colIndex] = backgroundColor
-                    if(inputPixels[rowIndex, colIndex][0] < 100):
-                        outputPixels[rowIndex, colIndex] = shadeColor
-                    else:
-                        outputPixels[rowIndex, colIndex] = backgroundColor
+            x_total = 0
+            y_total = 0
+
+            for ky in range(3):
+                for kx in range(3):
+                    nx = clip(x + kx - 1, 0, width - 1)
+                    ny = clip(y + ky - 1, 0, height - 1)
+
+                    pixel = input_pixels[nx, ny, 0]
+
+                    x_total += pixel * x_matrix[kx, ky]
+                    y_total += pixel * y_matrix[kx, ky]
+
+            magnitude = round((x_total * x_total + y_total * y_total) ** 0.5)
+
+            if(magnitude > 128):
+                output_pixels[x, y] = (0, 0, 0, 255)
+            else:
+                output_pixels[x, y] = (255, 255, 255, 255)
                     
     print("Edge detection complete")
-    return outputPixels
+    return output_pixels
 
 
 
-@njit
-def box_blur(input_pixels, kernel_sie):
+@njit(parallel=True)
+def box_blur(input_pixels, kernel_size):
     width, height, _ = input_pixels.shape
     output_pixels = np.copy(input_pixels)
 
@@ -180,11 +203,11 @@ def box_blur(input_pixels, kernel_sie):
             a_sum = 0
             count = 0
 
-            x0 = clip(x - kernel_sie, 0, width - 1)
-            x1 = clip(x + kernel_sie, 0, width - 1)
+            x0 = clip(x - kernel_size, 0, width - 1)
+            x1 = clip(x + kernel_size, 0, width - 1)
 
-            y0 = clip(y - kernel_sie, 0, height - 1)
-            y1 = clip(y + kernel_sie, 0, height - 1)
+            y0 = clip(y - kernel_size, 0, height - 1)
+            y1 = clip(y + kernel_size, 0, height - 1)
 
             # Loop through neighboring pixels
             for ny in range(y0, y1 + 1):
@@ -206,7 +229,79 @@ def box_blur(input_pixels, kernel_sie):
     return output_pixels
 
 
-@njit
+@njit(parallel=True)
+def gaussian_blur(input_pixels, kernel_size, sigma):
+    width, height, _ = input_pixels.shape
+    radius = kernel_size // 2
+    
+    # Generate 1d gaussian kernel
+    kernel = np.zeros(kernel_size)
+
+    for i in range(kernel_size):
+        x = i - radius
+        kernel[i] = np.exp(-(x*x) / (2*sigma*sigma))
+
+    kernel /= np.sum(kernel)
+
+
+    temp = np.copy(input_pixels)
+    output_pixels = np.copy(input_pixels)
+
+    # Horizontal pass
+    for y in prange(height):
+        for x in range(width):
+
+            r = 0.0
+            g = 0.0
+            b = 0.0
+
+            for k in range(-radius, radius + 1):
+                nx = clip(x + k, 0, width - 1)
+                weight = kernel[k + radius]
+
+                pixel = input_pixels[nx, y]
+
+                r += pixel[0] * weight
+                g += pixel[1] * weight
+                b += pixel[2] * weight
+
+            temp[x, y, 0] = int(r)
+            temp[x, y, 1] = int(g)
+            temp[x, y, 2] = int(b)
+            temp[x, y, 3] = 255
+
+
+    # Vertical pass
+    for y in prange(height):
+        for x in range(width):
+
+            r = 0.0
+            g = 0.0
+            b = 0.0
+
+            for k in range(-radius, radius + 1):
+                ny = clip(y + k, 0, height - 1)
+                weight = kernel[k + radius]
+
+                pixel = temp[x, ny]
+
+                r += pixel[0] * weight
+                g += pixel[1] * weight
+                b += pixel[2] * weight
+
+            output_pixels[x, y, 0] = int(r)
+            output_pixels[x, y, 1] = int(g)
+            output_pixels[x, y, 2] = int(b)
+            output_pixels[x, y, 3] = 255
+
+    print("Image gaussian blurred")
+
+    return output_pixels
+
+
+
+
+@njit(parallel=True)
 def make_seamless(input_pixels, num):
     width, height, _ = input_pixels.shape
     output_pixels = np.copy(input_pixels)
@@ -295,12 +390,12 @@ def main():
     processors = {
         "dither": lambda img_pixels: ordered_dither(img_pixels, 4),
         "posterize": lambda img_pixels: posterize(img_pixels, 4),
-        "edge-detect": lambda img_pixels: edge_detect(1.1, box_blur(img_pixels, 2)),
+        "sobel-edge-detect": lambda img_pixels: sobel_edge_detect(img_pixels),
         "box-blur": lambda img_pixels: box_blur(img_pixels, 1),
+        "gaussian-blur": lambda img_pixels: gaussian_blur(img_pixels, 2, 2),
         "resize": lambda img_pixels: resize_image(img_pixels, 1024, 1024),
         "make-seamless": lambda img_pixels: make_seamless(img_pixels, 100),
     }
-
 
 
     if input_type == "image":
