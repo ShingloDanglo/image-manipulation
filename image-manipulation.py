@@ -28,7 +28,6 @@ def save_image(output_path, img_pixels):
     img.save(output_path, optimize=True)
     print(f"Image saved as ",output_path)
 
-# TODO: Rewrite edge detection
 
 # =========================
 # Utils
@@ -129,7 +128,7 @@ def ordered_dither(input_pixels, color_steps=2):
 
 @njit(parallel=True)
 def posterize(input_pixels, color_steps):
-    stepSize = int(256/(color_steps))
+    stepSize = int(256/(color_steps-1))
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
 
@@ -145,7 +144,7 @@ def posterize(input_pixels, color_steps):
     return output_pixels
 
 
-@njit
+@njit(parallel=True)
 def sobel_edge_detect(input_pixels):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
@@ -350,6 +349,8 @@ def make_seamless(input_pixels, num):
 # Video
 # =========================
 
+# TODO: Rewrite video functions to reduce memory usage. Currently, even short HD clips
+# use several GB of memory
 
 def process_video(input_path, output_path, processor):
     clip = VideoFileClip(input_path)
@@ -363,7 +364,8 @@ def process_video(input_path, output_path, processor):
     clip = ImageSequenceClip(frames, fps=clip.fps)
     clip.write_videofile(output_path, codec="libx264")
     print(f"Video saved to {output_path}")
-    
+
+
 def process_gif(input_path, output_path, processor):
     clip = VideoFileClip(input_path)
     frames = []
@@ -410,7 +412,7 @@ def main():
         save_image(output_path, img_pixels)
 
     elif input_type == "video":
-        process_video(input_path, output_path, processors[action])
+        process_video(input_path, output_path, processors[actions[0]])
 
     elif input_type == "gif":
         process_gif(input_path, output_path, processors[action])   
