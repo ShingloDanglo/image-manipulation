@@ -6,6 +6,62 @@ from moviepy import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
 
+
+class ordered_dither_process():
+    def __init__(self):    
+        self.process_name = 'Ordered Dither'
+
+        self.user_inputs = {
+            'Color Steps': 2
+        }
+
+    def perform_process(self, input_pixels):
+        return ordered_dither(input_pixels, self.user_inputs.get('Color Steps'))
+
+
+class resize_process():
+    def __init__(self):
+        self.process_name = 'Resize Image'
+
+        self.user_inputs = {
+            'Width': 512,
+            'Height': 512
+        }
+
+    def perform_process(self, input_pixels):
+        return resize_image(input_pixels, self.user_inputs.get('Width'), self.user_inputs.get('Height'))
+
+class sobel_edge_detection_process():
+    def __init__(self):
+        self.process_name = 'Sobel Edge Detection'
+
+        self.user_inputs = {
+            'Edge Threshold (0-1)': 0.5
+        }
+
+    def perform_process(self, input_pixels):
+        return sobel_edge_detect(input_pixels, self.user_inputs.get('Edge Threshold (0-1)'))
+    
+class posterize_process():
+    def __init__(self):
+        self.process_name = 'Sobel Edge Detection'
+
+        self.user_inputs = {
+            'Edge Threshold (0-1)': 0.5
+        }
+
+    def perform_process(self, input_pixels):
+        return sobel_edge_detect(input_pixels, self.user_inputs.get('Edge Threshold (0-1)'))
+
+
+
+
+
+
+
+
+
+
 # =========================
 # IO
 # =========================
@@ -48,6 +104,8 @@ def resize_image(input_pixels, new_width, new_height):
     img = Image.fromarray(input_pixels, 'RGBA')
     new_size = (new_width, new_height)
     img = img.resize(new_size)
+
+    print("Image resized")
 
     return np.array(img)
 
