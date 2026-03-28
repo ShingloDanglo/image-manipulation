@@ -7,7 +7,7 @@ from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
 
 
-class ordered_dither_process():
+class OrderedDitherProcess():
     def __init__(self):    
         self.process_name = 'Ordered Dither'
 
@@ -19,7 +19,7 @@ class ordered_dither_process():
         return ordered_dither(input_pixels, self.user_inputs.get('Color Steps'))
 
 
-class resize_process():
+class ResizeProcess():
     def __init__(self):
         self.process_name = 'Resize Image'
 
@@ -31,7 +31,7 @@ class resize_process():
     def perform_process(self, input_pixels):
         return resize_image(input_pixels, self.user_inputs.get('Width'), self.user_inputs.get('Height'))
 
-class sobel_edge_detection_process():
+class SobelEdgeDetectionProcess():
     def __init__(self):
         self.process_name = 'Sobel Edge Detection'
 
@@ -42,7 +42,7 @@ class sobel_edge_detection_process():
     def perform_process(self, input_pixels):
         return sobel_edge_detect(input_pixels, self.user_inputs.get('Edge Threshold (0-1)'))
     
-class posterize_process():
+class PosterizeProcess():
     def __init__(self):
         self.process_name = 'Sobel Edge Detection'
 

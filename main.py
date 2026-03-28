@@ -12,26 +12,81 @@ from ttkbootstrap.constants import *
 
 
 
+class ImageEditorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Editor")
+        self.root.geometry("800x600")
+        self.process_list = [
+            ip.ResizeProcess(),
+            ip.SobelEdgeDetectionProcess(),
+            ip.OrderedDitherProcess(),
+        ]
+        self.input_path = tk.StringVar()
+        self.setup_ui()
+
+
+    # =========================
+    # UI Setup
+    # =========================
+    def setup_ui(self):
+        self.setup_menu()
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=BOTH, expand=True)
+
+        # Process Pipeline (Top)
+        processes_panel = ttk.Frame(main_frame, width=250, bootstyle="dark")
+        processes_panel.pack(side=LEFT, fill=Y, padx=10, pady=10)
+        process_panel_label = tk.Label(processes_panel, text="Process Pipeline")
+        process_panel_label.pack(fill=X, padx=2, pady=2)
+
+        tk.Button(processes_panel, text="Save", command = self.do_it).pack(fill=X, padx=10, pady=10)
+        tk.Button(processes_panel, text="Add Process", command = NONE).pack(fill=X, padx=2, pady=2)
+
+        # Process Pipeline Stack
+        self.process_stack_frame = ttk.Frame(processes_panel, bootstyle="secondary")
+        self.process_stack_frame.pack(fill=BOTH, padx=4, pady=4)
+        self.refresh_process_frames()
+
+
+        # Image Preview
+        self.preview_panel = ttk.Frame(main_frame)
+        self.preview_panel.pack(side=RIGHT, fill=BOTH, expand=True, padx=10, pady=10)
+        self.image_label = ttk.Label(self.preview_panel, anchor="center")
+        self.image_label.pack(fill=BOTH, expand=True)
 
 
 
+    # =========================
+    # Top Menu
+    # =========================
+    def setup_menu(self):
+        menu_bar = Menu(self.root)
 
+        file_menu = Menu(menu_bar, tearoff = 0)
+        menu_bar.add_cascade(label ='File', menu = file_menu)
+        
+        file_menu.add_command(label ='Import...', command = self.open_image_selection)
+        file_menu.add_command(label ='Export...', command = None)
+        file_menu.add_separator()
+        file_menu.add_command(label ='Exit', command = self.root.destroy)
 
+        processes_menu = Menu(menu_bar, tearoff = 0)
+        menu_bar.add_cascade(label ='Add Image Process', menu = processes_menu)
+        processes_menu.add_command(label ='Dither', command = None)
+        processes_menu.add_command(label ='Resize', command = None)
 
-# =========================
-# Main CLI
-# =========================
+        help_menu = Menu(menu_bar, tearoff = 0)
+        menu_bar.add_cascade(label ='Help', menu = help_menu)
+        help_menu.add_command(label='About Image Proccesses')
+        help_menu.add_command(label='What is <program_name>?')
+        self.root.config(menu=menu_bar)
+    
 
-
-
-def main():
-    process_list = []
-    process_list.append(ip.resize_process())
-    process_list.append(ip.sobel_edge_detection_process())
-    process_list.append(ip.ordered_dither_process())
-
-
-    def create_process_frame(parent_frame, process, index):
+    # =========================
+    # Pipeline Logic
+    # =========================
+    def create_process_frame(self, parent_frame, process, index):
         process_frame = ttk.Frame(parent_frame)
         process_frame.pack(fill=BOTH, padx=10, pady=5)
 
@@ -54,143 +109,64 @@ def main():
         buttons_frame = ttk.Frame(process_frame, bootstyle="warning")
         buttons_frame.pack(side=RIGHT)
 
-        tk.Button(buttons_frame, text="✕", command=lambda i=index: remove_process(i)).pack(fill=X, padx=2, pady=(2,0))
-        tk.Button(buttons_frame, text="▲", command=lambda p=process_list[index]: move_up(p)).pack(fill=X, padx=2, pady=2)
-        tk.Button(buttons_frame, text="▼", command=lambda p=process_list[index]: move_down(p)).pack(fill=X, padx=2, pady=(0,2))
+        tk.Button(buttons_frame, text="✕", command=lambda i=index: self.remove_process(i)).pack(fill=X, padx=2, pady=(2,0))
+        tk.Button(buttons_frame, text="▲", command=lambda p=index: self.move_up(p)).pack(fill=X, padx=2, pady=2)
+        tk.Button(buttons_frame, text="▼", command=lambda p=index: self.move_down(p)).pack(fill=X, padx=2, pady=(0,2))
 
-    def refresh_processes():
-        for widget in proccess_stack_frame.winfo_children():
+    def refresh_process_frames(self):
+        for widget in self.process_stack_frame.winfo_children():
             widget.destroy()
 
-        for i, process in enumerate(process_list):
-            create_process_frame(proccess_stack_frame, process, i)
+        for i, process in enumerate(self.process_list):
+            self.create_process_frame(self.process_stack_frame, process, i)
 
-    def add_process(process):
-        process_list.append(process)
+    def add_process(self, process):
+        self.process_list.append(process)
     
-    def remove_process(index):
-        del process_list[index]
-        refresh_processes()
+    def remove_process(self, index):
+        del self.process_list[index]
+        self.refresh_process_frames()
 
 
-    def move_up(process):
-        index = process_list.index(process)
+    def move_up(self, index):
         if index > 0:
-            process_list[index], process_list[index-1] = process_list[index-1], process_list[index]
-            refresh_processes()
+            self.process_list[index], self.process_list[index-1] = self.process_list[index-1], self.process_list[index]
+            self.refresh_process_frames()
 
-    def move_down(process):
-        index = process_list.index(process)
-        if index < len(process_list) - 1:
-            process_list[index], process_list[index+1] = process_list[index+1], process_list[index]
-            refresh_processes()
-
-
+    def move_down(self, index):
+        
+        if index < len(self.process_list) - 1:
+            self.process_list[index], self.process_list[index+1] = self.process_list[index+1], self.process_list[index]
+            self.refresh_process_frames()
 
 
-    def open_image_selection():
+
+    # =========================
+    # Pipeline IO
+    # =========================
+    def open_image_selection(self):
         path = filedialog.askopenfilename()
         if path:  # user didn't cancel
-            input_path.set(path)
+            self.input_path.set(path)
 
-    def do_it():
+    def do_it(self):
 
-        print(input_path.get())
-        img_pixels = ip.load_image(input_path.get())
+        print(self.input_path.get())
+        img_pixels = ip.load_image(self.input_path.get())
         
 
-        for process in process_list:
+        for process in self.process_list:
             
             img_pixels = process.perform_process(img_pixels)
 
         print(img_pixels)
             
         ip.save_image("image-output/idk.png", img_pixels)
-        
-
-
-
-    root = tk.Tk()
-    style = ttk.Style("superhero")
-
-    root.geometry("800x600")
-    root.title("Image Editor")
-
-    
-
-    # =========================
-    # Top Menu
-    # =========================
-    menu_bar = Menu(root)
-
-    file_menu = Menu(menu_bar, tearoff = 0)
-    menu_bar.add_cascade(label ='File', menu = file_menu)
-    input_path = tk.StringVar()
-    file_menu.add_command(label ='Import...', command = open_image_selection)
-    file_menu.add_command(label ='Export...', command = None)
-    file_menu.add_separator()
-    file_menu.add_command(label ='Exit', command = root.destroy)
-
-    processes_menu = Menu(menu_bar, tearoff = 0)
-    menu_bar.add_cascade(label ='Add Image Process', menu = processes_menu)
-    processes_menu.add_command(label ='Dither', command = None)
-    processes_menu.add_command(label ='Resize', command = None)
-
-    help_menu = Menu(menu_bar, tearoff = 0)
-    menu_bar.add_cascade(label ='Help', menu = help_menu)
-    help_menu.add_command(label='About Image Proccesses')
-    help_menu.add_command(label='What is <program_name>?')
-
-
-    # =========================
-    # Proccess Pipeline Column
-    # =========================
-    main_frame = ttk.Frame(root)
-    main_frame.pack(fill=BOTH, expand=True)
-
-    # Process Panel (Left)
-    processes_panel = ttk.Frame(main_frame, width=250, bootstyle="dark")
-    processes_panel.pack(side=LEFT, fill=Y, padx=10, pady=10)
-
-    process_panel_label = tk.Label(processes_panel, text="Process Pipeline")
-    process_panel_label.pack(fill=X, padx=2, pady=2)
-
-    tk.Button(processes_panel, text="Save", command = do_it).pack(fill=X, padx=10, pady=10)
-
-    tk.Button(processes_panel, text="Add Process", command = NONE).pack(fill=X, padx=2, pady=2)
-
-
-    # Process Pipeline Stack
-    proccess_stack_frame = ttk.Frame(processes_panel, bootstyle="secondary")
-    proccess_stack_frame.pack(fill=BOTH, padx=4, pady=4)
-
-    for i, process in enumerate(process_list):
-        create_process_frame(proccess_stack_frame, process, i)
-
-
-
-    # =========================
-    # Image Preview Column
-    # =========================
-
-    preview_panel = ttk.Frame(main_frame)
-    preview_panel.pack(side=RIGHT, fill=BOTH, expand=True, padx=10, pady=10)
-
-    image_label = ttk.Label(preview_panel, anchor="center")
-    image_label.pack(fill=BOTH, expand=True)
-
-
-    
-    root.config(menu = menu_bar)
-    
-    
-    root.mainloop()
-
-   
- 
-    p = psutil.Process()
  
 
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    style = ttk.Style("superhero")
+    app = ImageEditorApp(root)
+    root.mainloop()
