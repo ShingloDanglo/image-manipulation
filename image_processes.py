@@ -10,6 +10,9 @@ from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 # IO
 # =========================
 
+
+
+
 def load_image(imagePath):
     image = Image.open(imagePath)
     return np.array(image)
@@ -145,7 +148,7 @@ def posterize(input_pixels, color_steps):
 
 
 @njit(parallel=True)
-def sobel_edge_detect(input_pixels):
+def sobel_edge_detect(input_pixels, threshold):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
     
@@ -179,7 +182,7 @@ def sobel_edge_detect(input_pixels):
 
             magnitude = round((x_total * x_total + y_total * y_total) ** 0.5)
 
-            if(magnitude > 128):
+            if(magnitude > 256*threshold):
                 output_pixels[x, y] = (0, 0, 0, 255)
             else:
                 output_pixels[x, y] = (255, 255, 255, 255)
