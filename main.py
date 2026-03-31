@@ -25,7 +25,8 @@ class ImageEditorApp:
             ip.PosterizeProcess(),
             ip.MakeSeamlessProcess(),
             ip.BoxBlurProcess(),
-            ip.GaussianBlurProcess()
+            ip.GaussianBlurProcess(),
+            ip.AdjustHSVProcess()
         ]
         self.input_path = tk.StringVar()
         self.setup_ui()

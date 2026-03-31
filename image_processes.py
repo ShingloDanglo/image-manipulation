@@ -4,6 +4,7 @@ import numpy as np
 from numba import njit, prange
 from moviepy import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
+import colorsys
 
 import tkinter as tk
 
@@ -116,6 +117,18 @@ class GaussianBlurProcess():
 
     def perform_process(self, input_pixels):
         return gaussian_blur(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
+    
+class AdjustHSVProcess():
+    def __init__(self):
+        self.process_name = 'Adjust HSV'
+        self.user_inputs = [
+            DoubleSliderInput("Hue", 0.0, -1, 1),
+            DoubleSliderInput("Saturation", 0.0, -1, 1),
+            DoubleSliderInput("Value", 0.0, -1, 1),
+        ]
+
+    def perform_process(self, input_pixels):
+        return adjust_hsv(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get(), self.user_inputs[2].value.get())
 
 
 # =========================
@@ -182,6 +195,35 @@ def generate_gaussian_kernel(size, sigma):
 # =========================
 # Image effects
 # =========================
+
+# TODO: Implement rgb and hsv conversions so I can use @njit on
+# this function
+def adjust_hsv(input_pixels, h_offset, s_offest, v_offset):
+    width, height, _ = input_pixels.shape
+    output_pixels = np.empty_like(input_pixels)
+
+    for y in prange(height):
+        for x in range(width):
+            r_normalised = input_pixels[x, y, 0]/255
+            g_normalised = input_pixels[x, y, 1]/255
+            b_normalised = input_pixels[x, y, 2]/255
+
+            h, s, v = colorsys.rgb_to_hsv(r_normalised, g_normalised, b_normalised)
+
+            h = (h + h_offset) % 1.0
+            s = clip(s + s_offest, 0, 1)
+            v = clip(v + v_offset, 0, 1)
+
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+
+            output_pixels[x, y, 0] = int(r * 255) 
+            output_pixels[x, y, 1] = int(g * 255) 
+            output_pixels[x, y, 2] = int(b * 255) 
+            output_pixels[x, y, 3] = input_pixels[x, y, 3]
+    
+    
+
+    return output_pixels
 
 @njit
 def dither_pixel(color,step_size, dither_threshold):
