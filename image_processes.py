@@ -5,10 +5,140 @@ from numba import njit, prange
 from moviepy import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
+import tkinter as tk
+
+# =========================
+# Processes
+# =========================
+# Input classes are used to determine how inputs should be built in the GUI
+class IntegerInput:
+    def __init__(self, label, value, min_value, max_value):
+        self.label = label
+        self.value = tk.IntVar(value=value)
+        self.min_value = min_value
+        self.max_value = max_value
+
+class DoubleInput:
+    def __init__(self, label, value, min_value, max_value):
+        self.label = label
+        self.value = tk.DoubleVar(value=value)
+        self.min_value = min_value
+        self.max_value = max_value
+
+class IntegerSliderInput:
+    def __init__(self, label, value, min_value, max_value):
+        self.label = label
+        self.value = tk.IntVar(value=value)
+        self.min_value = min_value
+        self.max_value = max_value
+
+class DoubleSliderInput:
+    def __init__(self, label, value, min_value, max_value):
+        self.label = label
+        self.value = tk.DoubleVar(value=value)
+        self.min_value = min_value
+        self.max_value = max_value
+
+# =========================
+# Processes
+# =========================
+
+# TODO: Either add a drop down selection input for matrix size, or
+# add an algorithm to generate a bayer matrix given a matrix size
+class OrderedDitherProcess():
+    def __init__(self):    
+        self.process_name = 'Ordered Dither'
+        self.user_inputs = [
+            IntegerInput("Color Steps", 2, 2, 256),
+            IntegerInput("Matrix Size", 2, 2, 256)
+        ]
+
+    def perform_process(self, input_pixels):
+        return ordered_dither(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
+
+
+class ResizeProcess():
+    def __init__(self):
+        self.process_name = 'Resize Image'
+        self.user_inputs = [
+            IntegerInput("Width", 512, 0, 999999),
+            IntegerInput("Height", 512, 0, 999999)
+        ]
+
+    def perform_process(self, input_pixels):
+        return resize_image(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
+
+class SobelEdgeDetectionProcess():
+    def __init__(self):
+        self.process_name = 'Sobel Edge Detection'
+        self.user_inputs = [
+            DoubleSliderInput("Edge Threshold", 0.5, 0, 1)
+        ]
+
+    def perform_process(self, input_pixels):
+        return sobel_edge_detect(input_pixels, self.user_inputs[0].value.get())
+    
+class PosterizeProcess():
+    def __init__(self):
+        self.process_name = 'Posterize'
+        self.user_inputs = [
+            IntegerInput("Color Steps", 2, 2, 256)
+        ]
+
+    def perform_process(self, input_pixels):
+        return posterize(input_pixels, self.user_inputs[0].value.get())
+    
+class MakeSeamlessProcess():
+    def __init__(self):
+        self.process_name = 'Make Seamless'
+        self.user_inputs = [
+            IntegerInput("Seam Smoothing (X)", 128, 1, 200),
+            IntegerInput("Seam Smoothing (Y)", 128, 2, 200)
+        ]
+
+    def perform_process(self, input_pixels):
+        return make_seamless(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
+    
+class BoxBlurProcess():
+    def __init__(self):
+        self.process_name = 'Box Blur'
+        self.user_inputs = [
+            IntegerInput("Kernal Size", 4, 1, 9999)
+        ]
+
+    def perform_process(self, input_pixels):
+        return box_blur(input_pixels, self.user_inputs[0].value.get())
+
+class GaussianBlurProcess():
+    def __init__(self):
+        self.process_name = 'Gaussian Blur'
+        self.user_inputs = [
+            IntegerInput("Kernal Size", 4, 1, 9999),
+            DoubleInput("Sigma", 1, 0, 9999)
+        ]
+
+    def perform_process(self, input_pixels):
+        return gaussian_blur(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
+    
+class AdjustHSVProcess():
+    def __init__(self):
+        self.process_name = 'Adjust HSV'
+        self.user_inputs = [
+            DoubleSliderInput("Hue", 0.0, -1, 1),
+            DoubleSliderInput("Saturation", 0.0, -1, 1),
+            DoubleSliderInput("Value", 0.0, -1, 1),
+        ]
+
+    def perform_process(self, input_pixels):
+        return adjust_hsv(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get(), self.user_inputs[2].value.get())
+
 
 # =========================
 # IO
 # =========================
+
+
+
 
 def load_image(imagePath):
     image = Image.open(imagePath)
@@ -46,6 +176,8 @@ def resize_image(input_pixels, new_width, new_height):
     new_size = (new_width, new_height)
     img = img.resize(new_size)
 
+    print("Image resized")
+
     return np.array(img)
 
 @njit
@@ -62,9 +194,96 @@ def generate_gaussian_kernel(size, sigma):
     kernel /= np.sum(kernel)
     return kernel
 
+@njit
+def convert_rgb_to_hsv(r, g, b):
+    r_normalised = r/255
+    g_normalised = g/255
+    b_normalised = b/255
+
+    c_max = max(r_normalised, g_normalised, b_normalised)
+    c_min = min(r_normalised, g_normalised, b_normalised)
+    delta = c_max-c_min
+
+    # Calculate value
+    value = c_max
+
+    # Calculate saturation
+    saturation = 0
+
+    if(c_max == 0):
+        saturation = 0.0
+    else:
+        saturation = delta / c_max
+
+    # Calculate hue
+    if(delta == 0):
+        hue = 0
+    elif(c_max == r_normalised):
+        hue = (g_normalised-b_normalised) / delta
+    elif(c_max == g_normalised):
+        hue = 2.0 + (b_normalised-r_normalised) / delta
+    else:
+        hue = 4.0 + (r_normalised-g_normalised) / delta
+    
+    hue /= 6.0
+
+    return hue, saturation, value
+
+@njit
+def convert_hsv_to_rgb(h, s, v):
+    if s == 0.0:
+        return v, v, v
+    
+    i = int(h*6.0)
+    f = (h*6.0) - i
+    p = v*(1.0 - s)
+    q = v*(1.0 - s*f)
+    t = v*(1.0 - s*(1.0-f))
+    i = i%6
+    if i == 0:
+        return v, t, p
+    if i == 1:
+        return q, v, p
+    if i == 2:
+        return p, v, t
+    if i == 3:
+        return p, q, v
+    if i == 4:
+        return t, p, v
+    if i == 5:
+        return v, p, q
+    
+
+
 # =========================
 # Image effects
 # =========================
+
+# TODO: Implement rgb and hsv conversions so I can use @njit on
+# this function
+@njit(parallel=True)
+def adjust_hsv(input_pixels, h_offset, s_offest, v_offset):
+    width, height, _ = input_pixels.shape
+    output_pixels = np.empty_like(input_pixels)
+
+    for y in prange(height):
+        for x in range(width):
+            h, s, v = convert_rgb_to_hsv(input_pixels[x, y, 0], input_pixels[x, y, 1], input_pixels[x, y, 2])
+
+            h = (h + h_offset) % 1.0 # Ensure hue value wraps around
+            s = clip(s + s_offest, 0, 1)
+            v = clip(v + v_offset, 0, 1)
+
+            r, g, b = convert_hsv_to_rgb(h, s, v)
+
+            output_pixels[x, y, 0] = int(r * 255) 
+            output_pixels[x, y, 1] = int(g * 255) 
+            output_pixels[x, y, 2] = int(b * 255) 
+            output_pixels[x, y, 3] = input_pixels[x, y, 3]
+    
+    
+
+    return output_pixels
 
 @njit
 def dither_pixel(color,step_size, dither_threshold):
@@ -77,13 +296,16 @@ def dither_pixel(color,step_size, dither_threshold):
 
 #Ordered dithering
 @njit(parallel=True)
-def ordered_dither(input_pixels, color_steps=2):
+def ordered_dither(input_pixels, color_steps, matrix_size):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
 
     step_size = int(256/(color_steps-1))
 
-    matrix_size = 8
+    # Temporary fix
+    if(matrix_size != 2 and matrix_size != 4):
+        matrix_size = 8
+
     #2x2 matrix
     if(matrix_size == 2):
         rule = step_size * (1.0 / 4.0) * (np.array([
@@ -145,7 +367,7 @@ def posterize(input_pixels, color_steps):
 
 
 @njit(parallel=True)
-def sobel_edge_detect(input_pixels):
+def sobel_edge_detect(input_pixels, threshold):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
     
@@ -179,7 +401,7 @@ def sobel_edge_detect(input_pixels):
 
             magnitude = round((x_total * x_total + y_total * y_total) ** 0.5)
 
-            if(magnitude > 128):
+            if(magnitude > 256*threshold):
                 output_pixels[x, y] = (0, 0, 0, 255)
             else:
                 output_pixels[x, y] = (255, 255, 255, 255)
@@ -301,45 +523,52 @@ def gaussian_blur(input_pixels, kernel_size, sigma):
 
 
 @njit(parallel=True)
-def make_seamless(input_pixels, num):
+def make_seamless(input_pixels, seam_smooth_x, seam_smooth_y):
     width, height, _ = input_pixels.shape
     output_pixels = np.copy(input_pixels)
 
-    num = round(width / 4)
-
-    mid_point = round(width/2)
+    mid_point = width // 2
     for y in prange(height):
-        for x in range(num):
-            mix_multiplier = ((num -x) + 1) / num
+        for x in range(seam_smooth_x):
+            mix_multiplier = (seam_smooth_x -x) / seam_smooth_x
+
+            left_src  = mid_point - 1 - x
 
             # Move the left half of the middle section to the right side of the image
-            output_pixels[width - 1 - x, y, 0] = round(input_pixels[mid_point - x, y, 0] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 0] * (1 - mix_multiplier ))
-            output_pixels[width  - 1 - x, y, 1] = round(input_pixels[mid_point - x, y, 1] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 1] * (1 - mix_multiplier ))
-            output_pixels[width  - 1 - x, y, 2] = round(input_pixels[mid_point - x, y, 2] * mix_multiplier) +  round(input_pixels[width - 1 - x, y, 2] * (1 - mix_multiplier ))
+            output_pixels[width - 1 - x, y] = (
+                input_pixels[left_src, y] * mix_multiplier +
+                input_pixels[width - 1 - x, y] * (1 - mix_multiplier )
+            )
 
+            right_src = mid_point + x
             # Move the right half of the middle section to the left side of the image
-            output_pixels[x, y, 0] = round(input_pixels[mid_point + x, y, 0] * mix_multiplier) +  round(input_pixels[x, y, 0] * (1 - mix_multiplier ))
-            output_pixels[x, y, 1] = round(input_pixels[mid_point + x, y, 1] * mix_multiplier) +  round(input_pixels[x, y, 1] * (1 - mix_multiplier ))
-            output_pixels[x, y, 2] = round(input_pixels[mid_point + x, y, 2] * mix_multiplier) +  round(input_pixels[x, y, 2] * (1 - mix_multiplier ))
+            output_pixels[x, y] = (
+                input_pixels[right_src, y] * mix_multiplier +
+                input_pixels[x, y] * (1 - mix_multiplier)
+            )
 
     input_pixels = np.copy(output_pixels)
 
-    num = round(height / 4)
-
-    mid_point = round(height/2)
+    mid_point = height // 2
     for x in prange(width):
-        for y in range(num):
-            mix_multiplier = ((num -y) + 1) / num
+        for y in range(seam_smooth_y):
+            mix_multiplier = (seam_smooth_y -y) / seam_smooth_y
+
+            top_src = mid_point - 1 - y
 
             # Move the top half of the middle section to the bottom of the image
-            output_pixels[x, height - 1 - y, 0] = round(input_pixels[x, mid_point - y, 0] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 0] * (1 - mix_multiplier ))
-            output_pixels[x, height - 1 - y, 1] = round(input_pixels[x, mid_point - y, 1] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 1] * (1 - mix_multiplier ))
-            output_pixels[x, height - 1 - y, 2] = round(input_pixels[x, mid_point - y, 2] * mix_multiplier) +  round(input_pixels[x, height - 1 - y, 2] * (1 - mix_multiplier ))
+            output_pixels[x, height - 1 - y] = (
+                input_pixels[x, top_src] * mix_multiplier +
+                input_pixels[x, height - 1 - y] * (1 - mix_multiplier)
+            )
+
+            bottom_src = mid_point + y
 
             # Move the bottom half of the middle section to the top of the image
-            output_pixels[x, y, 0] = round(input_pixels[x, mid_point + y, 0] * mix_multiplier) +  round(input_pixels[x, y, 0] * (1 - mix_multiplier ))
-            output_pixels[x, y, 1] = round(input_pixels[x, mid_point + y, 1] * mix_multiplier) +  round(input_pixels[x, y, 1] * (1 - mix_multiplier ))
-            output_pixels[x, y, 2] = round(input_pixels[x, mid_point + y, 2] * mix_multiplier) +  round(input_pixels[x, y, 2] * (1 - mix_multiplier ))
+            output_pixels[x, y] = (
+                input_pixels[x, bottom_src] * mix_multiplier +
+                input_pixels[x, y] * (1 - mix_multiplier )
+            )
  
 
     return output_pixels
