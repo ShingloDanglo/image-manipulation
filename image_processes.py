@@ -4,7 +4,6 @@ import numpy as np
 from numba import njit, prange
 from moviepy import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
-import colorsys
 
 import tkinter as tk
 
@@ -44,15 +43,18 @@ class DoubleSliderInput:
 # Processes
 # =========================
 
+# TODO: Either add a drop down selection input for matrix size, or
+# add an algorithm to generate a bayer matrix given a matrix size
 class OrderedDitherProcess():
     def __init__(self):    
         self.process_name = 'Ordered Dither'
         self.user_inputs = [
-            IntegerInput("Color Steps", 2, 2, 256)
+            IntegerInput("Color Steps", 2, 2, 256),
+            IntegerInput("Matrix Size", 2, 2, 256)
         ]
 
     def perform_process(self, input_pixels):
-        return ordered_dither(input_pixels, self.user_inputs[0].value.get())
+        return ordered_dither(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get())
 
 
 class ResizeProcess():
@@ -192,29 +194,87 @@ def generate_gaussian_kernel(size, sigma):
     kernel /= np.sum(kernel)
     return kernel
 
+@njit
+def convert_rgb_to_hsv(r, g, b):
+    r_normalised = r/255
+    g_normalised = g/255
+    b_normalised = b/255
+
+    c_max = max(r_normalised, g_normalised, b_normalised)
+    c_min = min(r_normalised, g_normalised, b_normalised)
+    delta = c_max-c_min
+
+    # Calculate value
+    value = c_max
+
+    # Calculate saturation
+    saturation = 0
+
+    if(c_max == 0):
+        saturation = 0.0
+    else:
+        saturation = delta / c_max
+
+    # Calculate hue
+    if(delta == 0):
+        hue = 0
+    elif(c_max == r_normalised):
+        hue = (g_normalised-b_normalised) / delta
+    elif(c_max == g_normalised):
+        hue = 2.0 + (b_normalised-r_normalised) / delta
+    else:
+        hue = 4.0 + (r_normalised-g_normalised) / delta
+    
+    hue /= 6.0
+
+    return hue, saturation, value
+
+@njit
+def convert_hsv_to_rgb(h, s, v):
+    if s == 0.0:
+        return v, v, v
+    
+    i = int(h*6.0)
+    f = (h*6.0) - i
+    p = v*(1.0 - s)
+    q = v*(1.0 - s*f)
+    t = v*(1.0 - s*(1.0-f))
+    i = i%6
+    if i == 0:
+        return v, t, p
+    if i == 1:
+        return q, v, p
+    if i == 2:
+        return p, v, t
+    if i == 3:
+        return p, q, v
+    if i == 4:
+        return t, p, v
+    if i == 5:
+        return v, p, q
+    
+
+
 # =========================
 # Image effects
 # =========================
 
 # TODO: Implement rgb and hsv conversions so I can use @njit on
 # this function
+@njit(parallel=True)
 def adjust_hsv(input_pixels, h_offset, s_offest, v_offset):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
 
     for y in prange(height):
         for x in range(width):
-            r_normalised = input_pixels[x, y, 0]/255
-            g_normalised = input_pixels[x, y, 1]/255
-            b_normalised = input_pixels[x, y, 2]/255
+            h, s, v = convert_rgb_to_hsv(input_pixels[x, y, 0], input_pixels[x, y, 1], input_pixels[x, y, 2])
 
-            h, s, v = colorsys.rgb_to_hsv(r_normalised, g_normalised, b_normalised)
-
-            h = (h + h_offset) % 1.0
+            h = (h + h_offset) % 1.0 # Ensure hue value wraps around
             s = clip(s + s_offest, 0, 1)
             v = clip(v + v_offset, 0, 1)
 
-            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            r, g, b = convert_hsv_to_rgb(h, s, v)
 
             output_pixels[x, y, 0] = int(r * 255) 
             output_pixels[x, y, 1] = int(g * 255) 
@@ -236,13 +296,16 @@ def dither_pixel(color,step_size, dither_threshold):
 
 #Ordered dithering
 @njit(parallel=True)
-def ordered_dither(input_pixels, color_steps=2):
+def ordered_dither(input_pixels, color_steps, matrix_size):
     width, height, _ = input_pixels.shape
     output_pixels = np.empty_like(input_pixels)
 
     step_size = int(256/(color_steps-1))
 
-    matrix_size = 8
+    # Temporary fix
+    if(matrix_size != 2 and matrix_size != 4):
+        matrix_size = 8
+
     #2x2 matrix
     if(matrix_size == 2):
         rule = step_size * (1.0 / 4.0) * (np.array([

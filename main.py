@@ -254,7 +254,6 @@ class ImageEditorApp:
             img_pixels = process.perform_process(img_pixels)
             
         ip.save_image("image-output/idk.png", img_pixels)
- 
 
 
 if __name__ == "__main__":
