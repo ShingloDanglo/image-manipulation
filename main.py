@@ -9,6 +9,7 @@ from tkinter import filedialog
 from tkinter import *
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
+from PIL import Image, ImageTk
 
 
 
@@ -48,7 +49,7 @@ class ImageEditorApp:
 
         ttk.Button(processes_panel, text="Save", command = self.export_image).pack(fill=X, padx=10, pady=4)
         ttk.Button(processes_panel, text="Add Process", command = self.add_process_dialog).pack(fill=X, padx=10, pady=4)
-        ttk.Button(processes_panel, text="Update Preview", command = NONE).pack(fill=X, padx=10, pady=4)
+        ttk.Button(processes_panel, text="Update Preview", command = self.update_preview).pack(fill=X, padx=10, pady=4)
 
         # Process Pipeline Stack
         self.process_stack_frame = ttk.Frame(processes_panel, bootstyle="secondary")
@@ -57,11 +58,52 @@ class ImageEditorApp:
 
 
         # Image Preview
-        self.preview_panel = ttk.Frame(main_frame)
-        self.preview_panel.pack(side=RIGHT, fill=BOTH, expand=True, padx=10, pady=10)
-        self.image_label = ttk.Label(self.preview_panel, anchor="center")
-        self.image_label.pack(fill=BOTH, expand=True)
+        self.image_original = None
+        self.image_ratio = None
+        self.image_tk = None
 
+        self.preview_canvas = tk.Canvas(main_frame)
+        self.preview_canvas.pack(side=RIGHT, fill=BOTH, expand=True, padx=(0,10), pady=10)
+        
+        self.canvas_image = self.preview_canvas.create_image(
+            0, 0,
+            anchor="nw",
+            image=None
+        )
+
+        self.preview_canvas.bind('<Configure>', self.fit_image)
+
+
+    def fit_image(self, event):
+        self.resize_preview(event.width, event.height)
+        
+
+    def resize_preview(self, width, height):
+        if(self.image_original is None):
+            return
+
+        canvas_ratio = width / height
+
+        new_width = 0
+        new_height = 0
+
+        if(canvas_ratio > self.image_ratio):
+            new_height = int(height)
+            new_width = int(height * self.image_ratio) 
+        else:
+            new_width = int(width) 
+            new_height = int(width / self.image_ratio)
+
+
+        resized_image = self.image_original.resize((new_width, new_height))
+        self.image_tk = ImageTk.PhotoImage(resized_image)
+        self.preview_canvas.itemconfig(self.canvas_image, image=self.image_tk)
+
+        # Center image
+        self.preview_canvas.coords(
+            self.canvas_image
+        )
+    
 
 
     # =========================
@@ -239,21 +281,60 @@ class ImageEditorApp:
     # =========================
     def open_image_selection(self):
         path = filedialog.askopenfilename()
-        if path:  # user didn't cancel
-            self.input_path.set(path)
+        if not path:
+            return
+        
+        self.input_path.set(path)
+
+        # Update preview
+        self.image_original = Image.open(path)
+        self.image_ratio = (
+            self.image_original.size[0] /
+            self.image_original.size[1]
+        )
+
+        self.resize_preview(
+            self.preview_canvas.winfo_width(),
+            self.preview_canvas.winfo_height()
+        )
 
     def update_preview(self):
-        pass
+        img_pixels = ip.load_image(self.input_path.get())
+
+        for process in self.process_list:
+            img_pixels = process.perform_process(img_pixels)
+
+        self.image_original = Image.fromarray(img_pixels)
+        self.image_ratio = (
+            self.image_original.size[0] /
+            self.image_original.size[1]
+        )
+
+        self.resize_preview(
+            self.preview_canvas.winfo_width(),
+            self.preview_canvas.winfo_height()
+        )
+
     
     def export_image(self):
+        export_path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            initialfile="output.png"
+        )
+        if not export_path:
+            return
 
-        print(self.input_path.get())
+        print(export_path)
         img_pixels = ip.load_image(self.input_path.get())
 
         for process in self.process_list:
             img_pixels = process.perform_process(img_pixels)
             
-        ip.save_image("image-output/idk.png", img_pixels)
+        ip.save_image(export_path, img_pixels)
+
+    
+        
+    
 
 
 if __name__ == "__main__":
