@@ -47,7 +47,6 @@ class ImageEditorApp:
         process_panel_label = tk.Label(processes_panel, text="Process Pipeline")
         process_panel_label.pack(fill=X, padx=2, pady=2)
 
-        ttk.Button(processes_panel, text="Save", command = self.export_image).pack(fill=X, padx=10, pady=4)
         ttk.Button(processes_panel, text="Add Process", command = self.add_process_dialog).pack(fill=X, padx=10, pady=4)
         ttk.Button(processes_panel, text="Update Preview", command = self.update_preview).pack(fill=X, padx=10, pady=4)
 
@@ -116,7 +115,7 @@ class ImageEditorApp:
         menu_bar.add_cascade(label ='File', menu = file_menu)
         
         file_menu.add_command(label ='Import...', command = self.open_image_selection)
-        file_menu.add_command(label ='Export...', command = None)
+        file_menu.add_command(label ='Export...', command = self.export_image)
         file_menu.add_separator()
         file_menu.add_command(label ='Exit', command = self.root.destroy)
 
