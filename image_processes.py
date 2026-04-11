@@ -8,7 +8,7 @@ from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 import tkinter as tk
 
 # =========================
-# Processes
+# GUI Input Types
 # =========================
 # Input classes are used to determine how inputs should be built in the GUI
 class IntegerInput:
@@ -131,26 +131,25 @@ class AdjustHSVProcess():
 
     def perform_process(self, input_pixels):
         return adjust_hsv(input_pixels, self.user_inputs[0].value.get(), self.user_inputs[1].value.get(), self.user_inputs[2].value.get())
+    
+class AdjustContrastProcess():
+    def __init__(self):
+        self.process_name = 'Adjust Contrast'
+        self.user_inputs = [
+            DoubleSliderInput("Contrast", 1, 0.0, 2)
+        ]
+
+    def perform_process(self, input_pixels):
+        return adjust_contrast(input_pixels, self.user_inputs[0].value.get())
 
 
 # =========================
 # IO
 # =========================
 
-
-
-
 def load_image(imagePath):
     image = Image.open(imagePath)
     return np.array(image)
-
-#Saves the image with 1 bit per channel
-#def saveImage(imageName):
-#    img = Image.fromarray(pixelArray, 'RGBA')
-#    img = img.convert("P", palette=Image.ADAPTIVE, colors=8)
-
-#    img.save(imageName, optimize=True)
-#    print(f"Image saved as ",imageName)
 
 def save_image(output_path, img_pixels):
     img = Image.fromarray(img_pixels, 'RGBA')
@@ -259,8 +258,26 @@ def convert_hsv_to_rgb(h, s, v):
 # Image effects
 # =========================
 
-# TODO: Implement rgb and hsv conversions so I can use @njit on
-# this function
+@njit(parallel=True)
+def adjust_contrast(input_pixels, contrast_factor):
+    width, height, _ = input_pixels.shape
+    output_pixels = np.empty_like(input_pixels)
+
+    for y in prange(height):
+        for x in range(width):
+            r = clip(int(input_pixels[x, y, 0] * contrast_factor), 0, 255)
+            g = clip(int(input_pixels[x, y, 1] * contrast_factor), 0, 255)
+            b = clip(int(input_pixels[x, y, 2] * contrast_factor), 0, 255)
+            
+
+            output_pixels[x, y, 0] = r
+            output_pixels[x, y, 1] = g
+            output_pixels[x, y, 2] = b
+            output_pixels[x, y, 3] = input_pixels[x, y, 3]
+
+    return output_pixels
+
+
 @njit(parallel=True)
 def adjust_hsv(input_pixels, h_offset, s_offest, v_offset):
     width, height, _ = input_pixels.shape
